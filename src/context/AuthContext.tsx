@@ -12,7 +12,8 @@ import {
   signInWithPopup,
   User as FirebaseUser,
 } from "firebase/auth";
-import { auth, isFirebaseConfigured } from "@/lib/firebase";
+import { auth, isFirebaseConfigured, db } from "@/lib/firebase";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 
 export interface UserProfile {
   uid: string;
@@ -61,14 +62,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
 
     if (isFirebaseConfigured && auth) {
-      const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
         if (firebaseUser) {
-          setUser({
+          const profile = {
             uid: firebaseUser.uid,
             email: firebaseUser.email || "",
             displayName: firebaseUser.displayName || undefined,
-          });
+          };
+          setUser(profile);
           setIsDemoMode(false);
+
+          // Retrieve or create profile database record in Firestore
+          if (db) {
+            try {
+              const userRef = doc(db, "users", firebaseUser.uid);
+              const userDoc = await getDoc(userRef);
+              if (userDoc.exists()) {
+                const data = userDoc.data();
+                if (data.tier) {
+                  setSubscriptionTier(data.tier);
+                  localStorage.setItem("saas_sub_tier", data.tier);
+                }
+                if (data.scans !== undefined) {
+                  setMonthlyScanCount(data.scans);
+                  localStorage.setItem("saas_scan_count", data.scans.toString());
+                }
+              } else {
+                await setDoc(userRef, {
+                  uid: firebaseUser.uid,
+                  email: firebaseUser.email || "",
+                  displayName: firebaseUser.displayName || firebaseUser.email?.split("@")[0] || "User",
+                  tier: "Starter",
+                  scans: 4,
+                  status: "Active",
+                  joined: new Date().toISOString().split("T")[0],
+                });
+              }
+            } catch (err) {
+              console.error("Firestore user profile sync error:", err);
+            }
+          }
         } else {
           setUser(null);
         }
@@ -86,15 +119,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-  const updateSubscriptionTier = (tier: 'Starter' | 'Growth' | 'Business' | 'Enterprise') => {
+  const updateSubscriptionTier = async (tier: 'Starter' | 'Growth' | 'Business' | 'Enterprise') => {
     setSubscriptionTier(tier);
     localStorage.setItem("saas_sub_tier", tier);
+    if (isFirebaseConfigured && db && auth?.currentUser) {
+      try {
+        await setDoc(doc(db, "users", auth.currentUser.uid), { tier }, { merge: true });
+      } catch (err) {
+        console.error("Failed to sync tier to Firestore:", err);
+      }
+    }
   };
 
-  const incrementScanCount = () => {
+  const incrementScanCount = async () => {
     const newCount = monthlyScanCount + 1;
     setMonthlyScanCount(newCount);
     localStorage.setItem("saas_scan_count", newCount.toString());
+    if (isFirebaseConfigured && db && auth?.currentUser) {
+      try {
+        await setDoc(doc(db, "users", auth.currentUser.uid), { scans: newCount }, { merge: true });
+      } catch (err) {
+        console.error("Failed to sync scans to Firestore:", err);
+      }
+    }
   };
 
   const login = async (email: string, password: string) => {
@@ -125,12 +172,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const signup = async (email: string, password: string, name: string) => {
     if (isFirebaseConfigured && auth) {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
-      // Wait, update profile could be done but keep it simple
       setUser({
         uid: cred.user.uid,
         email: cred.user.email || "",
         displayName: name,
       });
+
+      if (db) {
+        try {
+          await setDoc(doc(db, "users", cred.user.uid), {
+            uid: cred.user.uid,
+            email: cred.user.email || "",
+            displayName: name,
+            tier: "Starter",
+            scans: 4,
+            status: "Active",
+            joined: new Date().toISOString().split("T")[0],
+          });
+        } catch (err) {
+          console.error("Failed to register profile in Firestore:", err);
+        }
+      }
     } else {
       // Mock signup
       const storedUsersRaw = localStorage.getItem("demo_registered_users");

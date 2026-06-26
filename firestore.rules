@@ -1,0 +1,27 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper to check authentication
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper to check document ownership
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // Rules for bills
+    match /bills/{billId} {
+      allow read, update, delete: if isAuthenticated() && isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
+    }
+
+    // Rules for reports
+    match /reports/{reportId} {
+      allow read, update, delete: if isAuthenticated() && isOwner(resource.data.userId);
+      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
+    }
+  }
+}

@@ -12,16 +12,32 @@ service cloud.firestore {
       return request.auth.uid == userId;
     }
 
+    // Helper to verify admin authority
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == "ashutoshtemgire2005@gmail.com" ||
+        request.auth.token.email == "ashu@gmail.com" ||
+        request.auth.token.email == "admin@company.com"
+      );
+    }
+
+    // Rules for users
+    match /users/{userId} {
+      allow read, write: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+    }
+
     // Rules for bills
     match /bills/{billId} {
-      allow read, update, delete: if isAuthenticated() && isOwner(resource.data.userId);
-      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
+      allow read, update, delete: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
+      allow list: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
+      allow create: if isAuthenticated() && (isOwner(request.resource.data.userId) || isAdmin());
     }
 
     // Rules for reports
     match /reports/{reportId} {
-      allow read, update, delete: if isAuthenticated() && isOwner(resource.data.userId);
-      allow create: if isAuthenticated() && isOwner(request.resource.data.userId);
+      allow read, update, delete: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
+      allow create: if isAuthenticated() && (isOwner(request.resource.data.userId) || isAdmin());
     }
   }
 }

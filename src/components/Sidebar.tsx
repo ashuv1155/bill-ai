@@ -17,6 +17,7 @@ import {
   CreditCard,
   Users,
   Link2,
+  ShieldAlert,
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -64,6 +65,11 @@ export default function Sidebar() {
       name: "Pricing Plans",
       href: "/pricing",
       icon: CreditCard,
+    },
+    {
+      name: "Admin Panel",
+      href: "/admin",
+      icon: ShieldAlert,
     },
   ];
 

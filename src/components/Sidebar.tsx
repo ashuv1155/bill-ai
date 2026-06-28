@@ -51,11 +51,6 @@ export default function Sidebar() {
       href: "/reports",
       icon: FileText,
     },
-    {
-      name: "Admin Panel",
-      href: "/admin",
-      icon: ShieldAlert,
-    },
   ];
 
   const scanLimit = 10;

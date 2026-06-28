@@ -78,16 +78,10 @@ export default function LandingPage() {
               <div className="flex flex-col sm:flex-row gap-4 justify-center w-full max-w-md pt-2">
                 <Link
                   href="/signup"
-                  className="flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium px-8 py-4 rounded-2xl shadow-lg shadow-purple-500/20 hover:shadow-purple-500/30 hover:from-purple-500 hover:to-indigo-500 transition-all group active:scale-[0.98]"
+                  className="flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium px-8 py-4 rounded-2xl shadow-lg shadow-purple-500/20 hover:shadow-purple-500/30 hover:from-purple-500 hover:to-indigo-500 transition-all group active:scale-[0.98] w-full"
                 >
                   Start Scanning Free
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </Link>
-                <Link
-                  href="/login?demo=true"
-                  className="flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-medium px-8 py-4 rounded-2xl transition-all active:scale-[0.98]"
-                >
-                  Try Demo Account
                 </Link>
               </div>
 

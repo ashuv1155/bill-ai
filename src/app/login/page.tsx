@@ -203,15 +203,6 @@ function LoginForm() {
         </button>
       </div>
 
-      <button
-        onClick={handleDemoLogin}
-        disabled={loading}
-        className="w-full py-3.5 bg-white/5 border border-white/10 hover:bg-white/10 text-white text-sm font-medium rounded-xl transition-all flex items-center justify-center gap-2 group active:scale-[0.98] cursor-pointer"
-      >
-        <Sparkles className="h-4 w-4 text-purple-400 group-hover:animate-bounce" />
-        Explore with Demo Account
-      </button>
-
       <p className="text-center text-sm text-slate-400 mt-6">
         Don&apos;t have an account?{" "}
         <Link href="/signup" className="text-purple-400 hover:text-purple-300 font-medium">

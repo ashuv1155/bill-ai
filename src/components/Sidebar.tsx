@@ -52,21 +52,6 @@ export default function Sidebar() {
       icon: FileText,
     },
     {
-      name: "Team Spaces",
-      href: "/team",
-      icon: Users,
-    },
-    {
-      name: "Integrations",
-      href: "/integrations",
-      icon: Link2,
-    },
-    {
-      name: "Pricing Plans",
-      href: "/pricing",
-      icon: CreditCard,
-    },
-    {
       name: "Admin Panel",
       href: "/admin",
       icon: ShieldAlert,

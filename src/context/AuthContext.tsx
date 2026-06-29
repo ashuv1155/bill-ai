@@ -1,48 +1,51 @@
 "use client";
-
-import React, { createContext, useContext, useEffect, useState } from "react";
-import {
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  sendPasswordResetEmail,
-  GoogleAuthProvider,
-  OAuthProvider,
-  signInWithPopup,
-  User as FirebaseUser,
-} from "firebase/auth";
-import { auth, isFirebaseConfigured, db } from "@/lib/firebase";
-import { doc, setDoc, getDoc } from "firebase/firestore";
-
-export interface UserProfile {
-  uid: string;
-  email: string;
-  displayName?: string;
-}
-
-interface AuthContextProps {
-  user: UserProfile | null;
-  loading: boolean;
-  isDemoMode: boolean;
-  subscriptionTier: 'Starter' | 'Growth' | 'Business' | 'Enterprise';
-  monthlyScanCount: number;
-  login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, name: string) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
-  loginWithApple: () => Promise<void>;
-  logout: () => Promise<void>;
-  resetPassword: (email: string) => Promise<void>;
-  updateSubscriptionTier: (tier: 'Starter' | 'Growth' | 'Business' | 'Enterprise') => void;
-  incrementScanCount: () => void;
-}
-
-const AuthContext = createContext<AuthContextProps | undefined>(undefined);
-
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
-  const [user, setUser] = useState<UserProfile | null>(null);
+ 
+ import React, { createContext, useContext, useEffect, useState } from "react";
+ import {
+   onAuthStateChanged,
+   signInWithEmailAndPassword,
+   createUserWithEmailAndPassword,
+   signOut as firebaseSignOut,
+   sendPasswordResetEmail,
+   sendEmailVerification,
+   GoogleAuthProvider,
+   OAuthProvider,
+   signInWithPopup,
+   User as FirebaseUser,
+ } from "firebase/auth";
+ import { auth, isFirebaseConfigured, db } from "@/lib/firebase";
+ import { doc, setDoc, getDoc } from "firebase/firestore";
+ 
+ export interface UserProfile {
+   uid: string;
+   email: string;
+   displayName?: string;
+   emailVerified: boolean;
+ }
+ 
+ interface AuthContextProps {
+   user: UserProfile | null;
+   loading: boolean;
+   isDemoMode: boolean;
+   subscriptionTier: 'Starter' | 'Growth' | 'Business' | 'Enterprise';
+   monthlyScanCount: number;
+   login: (email: string, password: string) => Promise<void>;
+   signup: (email: string, password: string, name: string) => Promise<void>;
+   loginWithGoogle: () => Promise<void>;
+   loginWithApple: () => Promise<void>;
+   logout: () => Promise<void>;
+   resetPassword: (email: string) => Promise<void>;
+   updateSubscriptionTier: (tier: 'Starter' | 'Growth' | 'Business' | 'Enterprise') => void;
+   incrementScanCount: () => void;
+   sendVerificationEmail: () => Promise<void>;
+ }
+ 
+ const AuthContext = createContext<AuthContextProps | undefined>(undefined);
+ 
+ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+   children,
+ }) => {
+   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(!isFirebaseConfigured);
   const [subscriptionTier, setSubscriptionTier] = useState<'Starter' | 'Growth' | 'Business' | 'Enterprise'>('Starter');
@@ -68,6 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             uid: firebaseUser.uid,
             email: firebaseUser.email || "",
             displayName: firebaseUser.displayName || undefined,
+            emailVerified: firebaseUser.emailVerified,
           };
           setUser(profile);
           setIsDemoMode(false);
@@ -97,6 +101,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
                   status: "Active",
                   joined: new Date().toISOString().split("T")[0],
                 });
+                setSubscriptionTier("Starter");
+                setMonthlyScanCount(4);
+                localStorage.setItem("saas_sub_tier", "Starter");
+                localStorage.setItem("saas_scan_count", "4");
               }
             } catch (err) {
               console.error("Firestore user profile sync error:", err);
@@ -104,6 +112,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           }
         } else {
           setUser(null);
+          setSubscriptionTier("Starter");
+          setMonthlyScanCount(4);
+          localStorage.removeItem("saas_sub_tier");
+          localStorage.removeItem("saas_scan_count");
         }
         setLoading(false);
       });
@@ -112,7 +124,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       // Mock auth initialization from localStorage
       const storedUser = localStorage.getItem("demo_user");
       if (storedUser) {
-        setUser(JSON.parse(storedUser));
+        const profile = JSON.parse(storedUser);
+        setUser({
+          ...profile,
+          emailVerified: profile.emailVerified ?? true,
+        });
+        
+        // Load mock user specific limits if they exist in registered list
+        const storedUsersRaw = localStorage.getItem("demo_registered_users");
+        const registeredUsers = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
+        const matched = registeredUsers.find((u: any) => u.uid === profile.uid);
+        if (matched) {
+          const userTier = matched.tier || "Starter";
+          const userScans = matched.scans !== undefined ? matched.scans : 4;
+          setSubscriptionTier(userTier);
+          setMonthlyScanCount(userScans);
+          localStorage.setItem("saas_sub_tier", userTier);
+          localStorage.setItem("saas_scan_count", userScans.toString());
+        }
       }
       setIsDemoMode(true);
       setLoading(false);
@@ -128,6 +157,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       } catch (err) {
         console.error("Failed to sync tier to Firestore:", err);
       }
+    } else {
+      // Update in mock registered users
+      const storedUsersRaw = localStorage.getItem("demo_registered_users");
+      if (storedUsersRaw && user) {
+        const registeredUsers = JSON.parse(storedUsersRaw);
+        const updated = registeredUsers.map((u: any) => {
+          if (u.uid === user.uid || (user.uid === "demo-user-id" && u.email === user.email)) {
+            return { ...u, tier };
+          }
+          return u;
+        });
+        localStorage.setItem("demo_registered_users", JSON.stringify(updated));
+      }
     }
   };
 
@@ -141,6 +183,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       } catch (err) {
         console.error("Failed to sync scans to Firestore:", err);
       }
+    } else {
+      // Update in mock registered users
+      const storedUsersRaw = localStorage.getItem("demo_registered_users");
+      if (storedUsersRaw && user) {
+        const registeredUsers = JSON.parse(storedUsersRaw);
+        const updated = registeredUsers.map((u: any) => {
+          if (u.uid === user.uid || (user.uid === "demo-user-id" && u.email === user.email)) {
+            return { ...u, scans: newCount };
+          }
+          return u;
+        });
+        localStorage.setItem("demo_registered_users", JSON.stringify(updated));
+      }
+    }
+  };
+
+  const sendVerificationEmail = async () => {
+    if (isFirebaseConfigured && auth?.currentUser) {
+      const actionCodeSettings = {
+        url: typeof window !== "undefined" ? `${window.location.origin}/dashboard` : "http://localhost:3000/dashboard",
+        handleCodeInApp: false,
+      };
+      await sendEmailVerification(auth.currentUser, actionCodeSettings);
+    } else {
+      alert("Verification email simulation sent (mocked).");
     }
   };
 
@@ -160,9 +227,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           uid: matched?.uid || "demo-user-id",
           email,
           displayName: matched?.name || "Demo User",
+          emailVerified: true,
         };
         localStorage.setItem("demo_user", JSON.stringify(profile));
         setUser(profile);
+
+        const userTier = matched?.tier || "Starter";
+        const userScans = matched?.scans !== undefined ? matched.scans : 4;
+        setSubscriptionTier(userTier);
+        setMonthlyScanCount(userScans);
+        localStorage.setItem("saas_sub_tier", userTier);
+        localStorage.setItem("saas_scan_count", userScans.toString());
       } else {
         throw new Error("Invalid credentials. Try demo@example.com / password.");
       }
@@ -172,10 +247,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const signup = async (email: string, password: string, name: string) => {
     if (isFirebaseConfigured && auth) {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
+      
+      // Try to send email verification link with redirect to dashboard
+      try {
+        const actionCodeSettings = {
+          url: typeof window !== "undefined" ? `${window.location.origin}/dashboard` : "http://localhost:3000/dashboard",
+          handleCodeInApp: false,
+        };
+        await sendEmailVerification(cred.user, actionCodeSettings);
+      } catch (err) {
+        console.error("Failed to send verification email during signup:", err);
+      }
+
       setUser({
         uid: cred.user.uid,
         email: cred.user.email || "",
         displayName: name,
+        emailVerified: cred.user.emailVerified,
       });
 
       if (db) {
@@ -193,6 +281,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           console.error("Failed to register profile in Firestore:", err);
         }
       }
+
+      setSubscriptionTier("Starter");
+      setMonthlyScanCount(4);
+      localStorage.setItem("saas_sub_tier", "Starter");
+      localStorage.setItem("saas_scan_count", "4");
     } else {
       // Mock signup
       const storedUsersRaw = localStorage.getItem("demo_registered_users");
@@ -207,6 +300,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         email,
         password,
         name,
+        tier: "Starter",
+        scans: 4,
       };
 
       registeredUsers.push(newUser);
@@ -219,9 +314,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         uid: newUser.uid,
         email: newUser.email,
         displayName: newUser.name,
+        emailVerified: true,
       };
       localStorage.setItem("demo_user", JSON.stringify(profile));
       setUser(profile);
+
+      setSubscriptionTier("Starter");
+      setMonthlyScanCount(4);
+      localStorage.setItem("saas_sub_tier", "Starter");
+      localStorage.setItem("saas_scan_count", "4");
     }
   };
 
@@ -234,9 +335,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         uid: "demo-google-user",
         email: "google-demo@example.com",
         displayName: "Google Demo User",
+        emailVerified: true,
       };
       localStorage.setItem("demo_user", JSON.stringify(profile));
       setUser(profile);
+      setSubscriptionTier("Starter");
+      setMonthlyScanCount(4);
+      localStorage.setItem("saas_sub_tier", "Starter");
+      localStorage.setItem("saas_scan_count", "4");
     }
   };
 
@@ -249,9 +355,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         uid: "demo-apple-user",
         email: "apple-demo@example.com",
         displayName: "Apple Demo User",
+        emailVerified: true,
       };
       localStorage.setItem("demo_user", JSON.stringify(profile));
       setUser(profile);
+      setSubscriptionTier("Starter");
+      setMonthlyScanCount(4);
+      localStorage.setItem("saas_sub_tier", "Starter");
+      localStorage.setItem("saas_scan_count", "4");
     }
   };
 
@@ -262,6 +373,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       localStorage.removeItem("demo_user");
       setUser(null);
     }
+    setSubscriptionTier("Starter");
+    setMonthlyScanCount(4);
+    localStorage.removeItem("saas_sub_tier");
+    localStorage.removeItem("saas_scan_count");
   };
 
   const resetPassword = async (email: string) => {
@@ -288,6 +403,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         resetPassword,
         updateSubscriptionTier,
         incrementScanCount,
+        sendVerificationEmail,
       }}
     >
       {children}

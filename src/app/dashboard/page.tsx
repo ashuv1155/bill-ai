@@ -15,6 +15,7 @@ import {
   Calendar,
   Sparkles,
   ArrowUpRight,
+  AlertTriangle,
 } from "lucide-react";
 import {
   BarChart,
@@ -31,11 +32,25 @@ import {
 } from "recharts";
 
 export default function Dashboard() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, sendVerificationEmail } = useAuth();
   const router = useRouter();
   const [bills, setBills] = useState<Bill[]>([]);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [verificationSent, setVerificationSent] = useState(false);
+  const [sendingVerification, setSendingVerification] = useState(false);
+
+  const handleResendVerification = async () => {
+    setSendingVerification(true);
+    try {
+      await sendVerificationEmail();
+      setVerificationSent(true);
+    } catch (err: any) {
+      alert("Failed to send verification link: " + err.message);
+    } finally {
+      setSendingVerification(false);
+    }
+  };
 
   // Verification redirect
   useEffect(() => {
@@ -219,6 +234,28 @@ export default function Dashboard() {
             <ArrowUpRight className="h-4 w-4" />
           </button>
         </div>
+
+        {/* Email Verification Banner */}
+        {!user.emailVerified && (
+          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 backdrop-blur-md relative overflow-hidden">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0" />
+              <div>
+                <span className="font-semibold block text-white">Email Verification Required</span>
+                <span className="text-slate-400 text-xs mt-0.5 block">
+                  Please verify your email address to secure your account. A verification link has been sent to <strong className="text-slate-200">{user.email}</strong>.
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={handleResendVerification}
+              disabled={sendingVerification || verificationSent}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 disabled:opacity-50 transition-colors shrink-0"
+            >
+              {sendingVerification ? "Sending..." : verificationSent ? "Verification Link Sent!" : "Resend Link"}
+            </button>
+          </div>
+        )}
 
         {/* Metrics Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">

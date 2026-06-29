@@ -55,6 +55,7 @@ export default function BillsPage() {
 
   // SaaS subscription modal trigger
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     async function runAuditChecks() {
@@ -256,8 +257,9 @@ export default function BillsPage() {
 
   // CRUD ops
   const handleSaveBill = async () => {
-    if (!editingBill || !user) return;
+    if (!editingBill || !user || isSaving) return;
 
+    setIsSaving(true);
     try {
       if (isEditingNew) {
         // Create new bill
@@ -276,6 +278,8 @@ export default function BillsPage() {
     } catch (err) {
       console.error(err);
       alert("Failed to save bill details.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -782,19 +786,30 @@ export default function BillsPage() {
               {/* Modal Footer */}
               <div className="px-6 py-4 border-t border-white/5 bg-[#161224] flex justify-end gap-3 sticky bottom-0 z-10">
                 <button
+                  type="button"
+                  disabled={isSaving}
                   onClick={() => {
                     setEditingBill(null);
                     setIsEditingNew(false);
                   }}
-                  className="px-4 py-2.5 bg-white/5 border border-white/10 text-white text-xs font-semibold rounded-xl hover:bg-white/10 transition-colors"
+                  className="px-4 py-2.5 bg-white/5 border border-white/10 text-white text-xs font-semibold rounded-xl hover:bg-white/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
+                  disabled={isSaving}
                   onClick={handleSaveBill}
-                  className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-purple-500/10"
+                  className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold rounded-xl transition-all shadow-md shadow-purple-500/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
                 >
-                  Save Bill
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-white" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <span>Save Bill</span>
+                  )}
                 </button>
               </div>
             </div>

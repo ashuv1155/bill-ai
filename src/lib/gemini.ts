@@ -28,6 +28,7 @@ export interface ExtractedBillData {
   category: "Fuel" | "Food" | "Travel" | "Office Expense" | "Marketing" | "Internet" | "Software" | "Miscellaneous";
   lineItems: { description: string; amount: number; qty?: number }[];
   auditAlerts?: AuditAlert[];
+  resolvedAlerts?: string[];
 }
 
 async function analyzeBillWithOpenRouter(

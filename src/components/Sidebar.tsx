@@ -51,6 +51,11 @@ export default function Sidebar() {
       href: "/reports",
       icon: FileText,
     },
+    {
+      name: "AI Bill Shield",
+      href: "/shield",
+      icon: ShieldAlert,
+    },
   ];
 
   const scanLimit = 10;

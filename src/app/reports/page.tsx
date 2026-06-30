@@ -7,6 +7,7 @@ import { fetchBills, Bill } from "@/services/billService";
 import { exportBillsToExcel, exportBillsToPDF } from "@/services/reportService";
 import Sidebar from "@/components/Sidebar";
 import { detectUserRegion, UserRegion } from "@/lib/geo";
+import { getCurrencySymbol } from "@/lib/currency";
 import {
   FileText,
   FileDown,
@@ -18,19 +19,6 @@ import {
   Receipt,
   FileSpreadsheet,
 } from "lucide-react";
-
-const getCurrencySymbol = (currency?: string) => {
-  switch (currency) {
-    case "USD": return "$";
-    case "EUR": return "€";
-    case "GBP": return "£";
-    case "CAD": return "C$";
-    case "AUD": return "A$";
-    case "INR":
-    default:
-      return "₹";
-  }
-};
 
 export default function ReportsPage() {
   const { user, loading: authLoading } = useAuth();

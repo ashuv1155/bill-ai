@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { fetchBills, updateBill, Bill } from "@/services/billService";
 import Sidebar from "@/components/Sidebar";
+import { convertCurrency, getCurrencySymbol, fetchExchangeRates } from "@/lib/currency";
 import {
   ShieldAlert,
   ShieldCheck,
@@ -19,36 +20,8 @@ import {
   Filter,
   ArrowUpRight,
   TrendingDown,
+  Mail,
 } from "lucide-react";
-
-const EXCHANGE_RATES: Record<string, number> = {
-  USD: 1.0,
-  INR: 0.012,
-  EUR: 1.08,
-  GBP: 1.27,
-  CAD: 0.73,
-  AUD: 0.66,
-};
-
-const convertCurrency = (amount: number, from: string = "USD", to: string): number => {
-  const fromRate = EXCHANGE_RATES[from] || 1.0;
-  const toRate = EXCHANGE_RATES[to] || 1.0;
-  // Convert from currency to USD base first, then to target currency
-  const amountInUsd = amount * fromRate;
-  return amountInUsd / toRate;
-};
-
-const getCurrencySymbol = (currency?: string) => {
-  switch (currency) {
-    case "USD": return "$";
-    case "EUR": return "€";
-    case "GBP": return "£";
-    case "CAD": return "C$";
-    case "AUD": return "A$";
-    case "INR": return "₹";
-    default: return "$";
-  }
-};
 
 export default function ShieldPage() {
   const { user, loading: authLoading } = useAuth();
@@ -60,6 +33,7 @@ export default function ShieldPage() {
   const [statusFilter, setStatusFilter] = useState("All"); // All, Active, Resolved
   const [searchTerm, setSearchTerm] = useState("");
   const [shieldCurrency, setShieldCurrency] = useState("USD");
+  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
 
   // Verification redirect
   useEffect(() => {
@@ -72,6 +46,9 @@ export default function ShieldPage() {
     async function loadData() {
       if (user) {
         try {
+          const rates = await fetchExchangeRates();
+          setExchangeRates(rates);
+
           const list = await fetchBills(user.uid);
           setBills(list);
         } catch (error) {
@@ -141,10 +118,10 @@ export default function ShieldPage() {
 
     alerts.forEach((alert) => {
       totalFlagsRaised++;
-      potentialSavings += convertCurrency(alert.amount, b.currency || "INR", shieldCurrency);
+      potentialSavings += convertCurrency(alert.amount, b.currency || "INR", shieldCurrency, exchangeRates);
       if (resolved.includes(alert.lineItem)) {
         resolvedDisputesCount++;
-        recoveredSavings += convertCurrency(alert.amount, b.currency || "INR", shieldCurrency);
+        recoveredSavings += convertCurrency(alert.amount, b.currency || "INR", shieldCurrency, exchangeRates);
       }
     });
   });
@@ -401,25 +378,34 @@ export default function ShieldPage() {
                           {/* Dispute script */}
                           {!isResolved && alertItem.disputeScript && (
                             <div className="mt-3 p-3 rounded-lg bg-black/40 border border-white/5">
-                              <div className="flex justify-between items-center mb-1 text-[10px] text-slate-500 font-semibold tracking-wider uppercase">
-                                <span>Copy dispute template</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopyScript(alertItem.disputeScript, uniqueKey)}
-                                  className="text-purple-400 hover:text-purple-300 flex items-center gap-1 font-bold normal-case"
-                                >
-                                  {copiedIndex === uniqueKey ? (
-                                    <>
-                                      <Check className="h-3 w-3 text-emerald-400" />
-                                      <span className="text-emerald-400">Copied!</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Copy className="h-3 w-3" />
-                                      <span>Copy script</span>
-                                    </>
-                                  )}
-                                </button>
+                              <div className="flex justify-between items-center mb-1 text-[10px] text-slate-500 font-semibold tracking-wider uppercase gap-3 flex-wrap">
+                                <span>Dispute Actions</span>
+                                <div className="flex items-center gap-3">
+                                  <a
+                                    href={`mailto:?subject=${encodeURIComponent(`Billing Inquiry / Dispute: ${b.vendorName}`)}&body=${encodeURIComponent(`Hi ${b.vendorName} Support Team,\n\nI am writing regarding my bill dated ${b.date} (Invoice/Bill: ${b.billNumber || "N/A"}).\n\nI would appreciate your clarification on the following charge:\n\n"${alertItem.disputeScript}"\n\nCould you please look into this and waive or refund this amount if applicable?\n\nThank you,\n${user?.displayName || "Valued Customer"}`)}`}
+                                    className="text-purple-400 hover:text-purple-300 flex items-center gap-1 font-bold normal-case"
+                                  >
+                                    <Mail className="h-3 w-3" />
+                                    <span>Draft Email</span>
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyScript(alertItem.disputeScript, uniqueKey)}
+                                    className="text-purple-400 hover:text-purple-300 flex items-center gap-1 font-bold normal-case"
+                                  >
+                                    {copiedIndex === uniqueKey ? (
+                                      <>
+                                        <Check className="h-3 w-3 text-emerald-400" />
+                                        <span className="text-emerald-400">Copied!</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="h-3 w-3" />
+                                        <span>Copy script</span>
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
                               </div>
                               <p className="text-slate-300 italic text-[11px] leading-relaxed select-all">
                                 "{alertItem.disputeScript}"

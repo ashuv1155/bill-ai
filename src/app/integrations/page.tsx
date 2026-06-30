@@ -37,6 +37,8 @@ export default function Integrations() {
   const [syncStatusText, setSyncStatusText] = useState("");
   const [showConfigModal, setShowConfigModal] = useState<string | null>(null);
   const [companyIdInput, setCompanyIdInput] = useState("");
+  const [webhookUrlInput, setWebhookUrlInput] = useState("");
+  const [copiedScript, setCopiedScript] = useState(false);
 
   const hasAccess = subscriptionTier === "Business" || subscriptionTier === "Enterprise";
 
@@ -51,18 +53,23 @@ export default function Integrations() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem("saas_integrations");
-      if (stored) {
-        setIntegrations(JSON.parse(stored));
-      } else {
-        const initial: IntegrationCard[] = [
-          { id: "qb", name: "QuickBooks Online", logo: "QB", description: "Direct synchronization of bills, line items, and GST taxes into QuickBooks ledgers.", connected: false, lastSynced: "Never synced" },
-          { id: "xero", name: "Xero Accounting", logo: "X", description: "Automatically export claim entries directly into Xero draft invoices.", connected: false, lastSynced: "Never synced" },
-          { id: "zoho", name: "Zoho Books", logo: "ZB", description: "Push verified scans into Zoho expenses matching tax account codes.", connected: false, lastSynced: "Never synced" },
-          { id: "tally", name: "Tally Prime ERP", logo: "T", description: "Format and transfer voucher journals into Tally compliant XML sheets.", connected: false, lastSynced: "Never synced" },
-        ];
-        setIntegrations(initial);
-        localStorage.setItem("saas_integrations", JSON.stringify(initial));
-      }
+      const currentIntegrations = stored ? JSON.parse(stored) : [];
+      
+      const initial: IntegrationCard[] = [
+        { id: "qb", name: "QuickBooks Online", logo: "QB", description: "Direct synchronization of bills, line items, and GST taxes into QuickBooks ledgers.", connected: false, lastSynced: "Never synced" },
+        { id: "xero", name: "Xero Accounting", logo: "X", description: "Automatically export claim entries directly into Xero draft invoices.", connected: false, lastSynced: "Never synced" },
+        { id: "zoho", name: "Zoho Books", logo: "ZB", description: "Push verified scans into Zoho expenses matching tax account codes.", connected: false, lastSynced: "Never synced" },
+        { id: "tally", name: "Tally Prime ERP", logo: "T", description: "Format and transfer voucher journals into Tally compliant XML sheets.", connected: false, lastSynced: "Never synced" },
+        { id: "gsheet", name: "Google Sheets Sync", logo: "GS", description: "Real-time sync of scanned bills, tax line items, and audit statuses to a custom Google Sheet.", connected: false, lastSynced: "Never synced" },
+      ];
+
+      const merged = initial.map((initItem) => {
+        const found = currentIntegrations.find((c: any) => c.id === initItem.id);
+        return found ? { ...initItem, connected: found.connected, lastSynced: found.lastSynced } : initItem;
+      });
+
+      setIntegrations(merged);
+      localStorage.setItem("saas_integrations", JSON.stringify(merged));
     }
   }, []);
 
@@ -76,12 +83,20 @@ export default function Integrations() {
 
   const handleConnect = (id: string) => {
     setShowConfigModal(id);
-    setCompanyIdInput("COM-" + Math.floor(Math.random() * 900000 + 100000));
+    if (id === "gsheet") {
+      setWebhookUrlInput(localStorage.getItem("billai_gsheet_webhook_url") || "");
+    } else {
+      setCompanyIdInput("COM-" + Math.floor(Math.random() * 900000 + 100000));
+    }
   };
 
   const handleSaveConnection = (e: React.FormEvent) => {
     e.preventDefault();
     if (!showConfigModal) return;
+
+    if (showConfigModal === "gsheet") {
+      localStorage.setItem("billai_gsheet_webhook_url", webhookUrlInput);
+    }
 
     const updated = integrations.map((item) =>
       item.id === showConfigModal ? { ...item, connected: true, lastSynced: "Connected today" } : item
@@ -93,6 +108,9 @@ export default function Integrations() {
   };
 
   const handleDisconnect = (id: string) => {
+    if (id === "gsheet") {
+      localStorage.removeItem("billai_gsheet_webhook_url");
+    }
     const updated = integrations.map((item) =>
       item.id === id ? { ...item, connected: false, lastSynced: "Never synced" } : item
     );
@@ -298,30 +316,99 @@ export default function Integrations() {
               </div>
 
               <form onSubmit={handleSaveConnection} className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                    Organization Account ID
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={companyIdInput}
-                    onChange={(e) => setCompanyIdInput(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:border-purple-500 font-semibold"
-                  />
-                </div>
+                {showConfigModal === "gsheet" ? (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Google Sheets Web App URL
+                      </label>
+                      <input
+                        type="url"
+                        required
+                        placeholder="https://script.google.com/macros/s/.../exec"
+                        value={webhookUrlInput}
+                        onChange={(e) => setWebhookUrlInput(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:border-purple-500 font-semibold"
+                      />
+                    </div>
 
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-                    Expense Account Code
-                  </label>
-                  <select className="w-full px-4 py-2.5 rounded-xl bg-[#161224] border border-white/10 text-white text-xs focus:outline-none focus:border-purple-500">
-                    <option value="6000-Travel">6000 - Travel & Lodging</option>
-                    <option value="6100-Meals">6100 - Meals & Entertainment</option>
-                    <option value="6200-Supplies">6200 - Office Supplies</option>
-                    <option value="6300-Software">6300 - IT & Software Subscriptions</option>
-                  </select>
-                </div>
+                    <div className="p-3 bg-white/[0.02] border border-white/5 rounded-xl space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider">Setup Instructions</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const code = `function doPost(e) {
+  var data = JSON.parse(e.postData.contents);
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  
+  // Create headers if empty
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(["Timestamp", "Date", "Vendor", "Invoice #", "Category", "Currency", "Total Amount", "Tax Amount", "Tax ID / GSTIN"]);
+  }
+  
+  sheet.appendRow([
+    data.timestamp,
+    data.date,
+    data.vendorName,
+    data.billNumber,
+    data.category,
+    data.currency,
+    data.totalAmount,
+    data.gstAmount,
+    data.taxId
+  ]);
+  
+  return ContentService.createTextOutput(JSON.stringify({status: "success"}))
+    .setMimeType(ContentService.MimeType.JSON);
+}`;
+                            navigator.clipboard.writeText(code);
+                            setCopiedScript(true);
+                            setTimeout(() => setCopiedScript(false), 2000);
+                          }}
+                          className="text-[10px] font-semibold text-purple-400 hover:text-purple-300"
+                        >
+                          {copiedScript ? "Copied!" : "Copy Apps Script"}
+                        </button>
+                      </div>
+                      <ol className="text-[10px] text-slate-400 list-decimal list-inside space-y-1 leading-relaxed">
+                        <li>Open a Google Sheet.</li>
+                        <li>Go to Extensions &gt; Apps Script.</li>
+                        <li>Paste the copied script code.</li>
+                        <li>Click Deploy &gt; New Deployment.</li>
+                        <li>Select "Web app", set Execute as "Me", and Who has access to "Anyone".</li>
+                        <li>Deploy and copy the Web App URL here.</li>
+                      </ol>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Organization Account ID
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={companyIdInput}
+                        onChange={(e) => setCompanyIdInput(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs focus:outline-none focus:border-purple-500 font-semibold"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                        Expense Account Code
+                      </label>
+                      <select className="w-full px-4 py-2.5 rounded-xl bg-[#161224] border border-white/10 text-white text-xs focus:outline-none focus:border-purple-500">
+                        <option value="6000-Travel">6000 - Travel & Lodging</option>
+                        <option value="6100-Meals">6100 - Meals & Entertainment</option>
+                        <option value="6200-Supplies">6200 - Office Supplies</option>
+                        <option value="6300-Software">6300 - IT & Software Subscriptions</option>
+                      </select>
+                    </div>
+                  </>
+                )}
 
                 <div className="flex gap-3 pt-4">
                   <button

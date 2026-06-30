@@ -56,6 +56,16 @@ export default function Sidebar() {
       href: "/shield",
       icon: ShieldAlert,
     },
+    {
+      name: "Team Space",
+      href: "/team",
+      icon: Users,
+    },
+    {
+      name: "Integrations",
+      href: "/integrations",
+      icon: Link2,
+    },
   ];
 
   const scanLimit = 10;

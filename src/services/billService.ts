@@ -5,6 +5,7 @@ import {
   updateDoc,
   deleteDoc,
   doc,
+  getDoc,
   query,
   where,
   getDocs,
@@ -13,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { ExtractedBillData, AuditAlert } from "@/lib/gemini";
+import { syncBillToGoogleSheets } from "@/lib/sheets";
 
 export interface Bill extends ExtractedBillData {
   id: string;
@@ -21,6 +23,7 @@ export interface Bill extends ExtractedBillData {
   fileName: string;
   createdAt: any;
   updatedAt: any;
+  status?: "Pending" | "Approved" | "Rejected";
 }
 
 const COLLECTION_NAME = "bills";
@@ -69,6 +72,7 @@ function getMockBills(userId: string): Bill[] {
         currency: "USD",
         taxType: "Sales Tax",
         taxId: "47-0912831",
+        status: "Pending",
       },
       {
         id: "mock-2",
@@ -105,6 +109,7 @@ function getMockBills(userId: string): Bill[] {
         currency: "INR",
         taxType: "GST",
         taxId: "27AADCA8981A1Z2",
+        status: "Pending",
       },
       {
         id: "mock-3",
@@ -131,6 +136,7 @@ function getMockBills(userId: string): Bill[] {
         currency: "GBP",
         taxType: "VAT",
         taxId: "GB123456789",
+        status: "Approved",
       },
     ];
     localStorage.setItem(MOCK_BILLS_KEY, JSON.stringify(initialMock));
@@ -210,6 +216,7 @@ export async function createBill(
     ...extractedData,
     fileUrl,
     fileName,
+    status: (extractedData as any).status || "Pending",
   };
 
   if (isFirebaseConfigured && db) {
@@ -218,12 +225,14 @@ export async function createBill(
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
     });
-    return {
+    const createdBill = {
       id: docRef.id,
       ...newBillData,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+    syncBillToGoogleSheets(createdBill).catch((err) => console.error("Sheets sync err:", err));
+    return createdBill;
   } else {
     // Save to local storage
     const bills = getMockBills(userId);
@@ -235,6 +244,7 @@ export async function createBill(
     };
     bills.push(newBill);
     saveMockBills(bills);
+    syncBillToGoogleSheets(newBill).catch((err) => console.error("Sheets sync err:", err));
     return newBill;
   }
 }
@@ -249,17 +259,33 @@ export async function updateBill(
       ...updatedFields,
       updatedAt: Timestamp.now(),
     });
+    // Fetch updated document and sync
+    getDoc(docRef)
+      .then((snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          const fullBill = { id: snap.id, ...data } as Bill;
+          syncBillToGoogleSheets(fullBill).catch((err) => console.error("Sheets sync err:", err));
+        }
+      })
+      .catch((err) => console.warn("Could not fetch updated doc for sheets sync:", err));
   } else {
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem(MOCK_BILLS_KEY);
       if (stored) {
         let bills: Bill[] = JSON.parse(stored);
-        bills = bills.map((b) =>
-          b.id === billId
-            ? { ...b, ...updatedFields, updatedAt: new Date().toISOString() }
-            : b
-        );
+        let updatedBill: Bill | null = null;
+        bills = bills.map((b) => {
+          if (b.id === billId) {
+            updatedBill = { ...b, ...updatedFields, updatedAt: new Date().toISOString() };
+            return updatedBill;
+          }
+          return b;
+        });
         saveMockBills(bills);
+        if (updatedBill) {
+          syncBillToGoogleSheets(updatedBill).catch((err) => console.error("Sheets sync err:", err));
+        }
       }
     }
   }

@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import Sidebar from "@/components/Sidebar";
+import { fetchBills, updateBill, Bill } from "@/services/billService";
+import { getCurrencySymbol } from "@/lib/currency";
 import {
   Users,
   UserPlus,
@@ -32,6 +34,7 @@ interface ExpenseApproval {
   amount: number;
   date: string;
   status: "Pending" | "Approved" | "Rejected";
+  currency?: string;
 }
 
 export default function Team() {
@@ -59,6 +62,7 @@ export default function Team() {
   }, [user, authLoading, router]);
 
   // Load / Setup Mock Data
+  // Load / Setup Mock Data and Real Bill Approvals
   useEffect(() => {
     if (typeof window !== "undefined") {
       const storedMembers = localStorage.getItem("team_members");
@@ -74,20 +78,31 @@ export default function Team() {
         setTeamMembers(initialMembers);
         localStorage.setItem("team_members", JSON.stringify(initialMembers));
       }
+    }
+  }, [user]);
 
-      const storedApprovals = localStorage.getItem("team_approvals");
-      if (storedApprovals) {
-        setApprovals(JSON.parse(storedApprovals));
-      } else {
-        const initialApprovals: ExpenseApproval[] = [
-          { id: "app-1", submitter: "Joey Tribbiani", vendor: "Client Lunch - Starbucks", amount: 145.50, date: "2026-06-25", status: "Pending" },
-          { id: "app-2", submitter: "Joey Tribbiani", vendor: "Annual Flight Ticket - Delta Airlines", amount: 1250.00, date: "2026-06-24", status: "Pending" },
-          { id: "app-3", submitter: "Monica Geller", vendor: "Office Cleaning Supplies", amount: 62.10, date: "2026-06-22", status: "Approved" },
-        ];
-        setApprovals(initialApprovals);
-        localStorage.setItem("team_approvals", JSON.stringify(initialApprovals));
+  // Fetch real bills and map them to approvals list
+  useEffect(() => {
+    async function loadRealApprovals() {
+      if (user) {
+        try {
+          const allBills = await fetchBills(user.uid);
+          const mapped: ExpenseApproval[] = allBills.map((b: Bill) => ({
+            id: b.id,
+            submitter: b.fileName === "manually_entered" ? "You (Admin)" : "Joey Tribbiani",
+            vendor: b.vendorName,
+            amount: b.totalAmount,
+            date: b.date,
+            status: b.status || "Pending",
+            currency: b.currency || "USD",
+          }));
+          setApprovals(mapped);
+        } catch (err) {
+          console.error("Error loading real bills for approvals:", err);
+        }
       }
     }
+    loadRealApprovals();
   }, [user]);
 
   if (!mounted || authLoading || !user) {
@@ -122,12 +137,15 @@ export default function Team() {
     setInviteRole("Submitter");
   };
 
-  const handleApprovalAction = (id: string, action: "Approved" | "Rejected") => {
-    const updated = approvals.map((app) =>
-      app.id === id ? { ...app, status: action } : app
-    );
-    setApprovals(updated);
-    localStorage.setItem("team_approvals", JSON.stringify(updated));
+  const handleApprovalAction = async (id: string, action: "Approved" | "Rejected") => {
+    try {
+      await updateBill(id, { status: action });
+      setApprovals((prev) =>
+        prev.map((app) => (app.id === id ? { ...app, status: action } : app))
+      );
+    } catch (err) {
+      console.error("Failed to update bill approval status:", err);
+    }
   };
 
   return (
@@ -304,7 +322,7 @@ export default function Team() {
                               </div>
                               <p className="text-xs text-slate-300 font-medium">{claim.vendor}</p>
                               <span className="text-sm font-extrabold text-purple-400">
-                                ${claim.amount.toFixed(2)}
+                                {getCurrencySymbol(claim.currency)}{claim.amount.toFixed(2)}
                               </span>
                             </div>
 

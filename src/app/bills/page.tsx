@@ -29,21 +29,12 @@ import {
   AlertTriangle,
   Copy,
   Check,
+  Mail,
 } from "lucide-react";
 import Image from "next/image";
 
-export const getCurrencySymbol = (currency?: string) => {
-  switch (currency) {
-    case "USD": return "$";
-    case "EUR": return "€";
-    case "GBP": return "£";
-    case "CAD": return "C$";
-    case "AUD": return "A$";
-    case "INR":
-    default:
-      return "₹";
-  }
-};
+import { convertCurrency, getCurrencySymbol, fetchExchangeRates } from "@/lib/currency";
+import { applyRules, loadRules, CategorizationRule, saveRules } from "@/lib/rules";
 
 export default function BillsPage() {
   const { user, loading: authLoading, isDemoMode, subscriptionTier, monthlyScanCount, incrementScanCount } = useAuth();
@@ -75,6 +66,13 @@ export default function BillsPage() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [userRegion, setUserRegion] = useState<UserRegion | null>(null);
+  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
+  
+  // Categorization Rules States
+  const [showRulesModal, setShowRulesModal] = useState(false);
+  const [rulesList, setRulesList] = useState<CategorizationRule[]>([]);
+  const [newRulePattern, setNewRulePattern] = useState("");
+  const [newRuleCategory, setNewRuleCategory] = useState("Software");
 
   useEffect(() => {
     async function runAuditChecks() {
@@ -160,6 +158,12 @@ export default function BillsPage() {
           const region = await detectUserRegion();
           setUserRegion(region);
 
+          const rates = await fetchExchangeRates();
+          setExchangeRates(rates);
+
+          const rules = loadRules();
+          setRulesList(rules);
+
           const list = await fetchBills(user.uid);
           setBills(list);
         } catch (error) {
@@ -226,6 +230,10 @@ export default function BillsPage() {
 
       const extractedData = await res.json();
 
+      // Load rules and apply auto-categorization
+      const activeRules = loadRules();
+      const finalCategory = applyRules(extractedData.vendorName || "", extractedData.category || "Miscellaneous", activeRules);
+
       // Successfully scanned, increment usage
       incrementScanCount();
 
@@ -234,6 +242,7 @@ export default function BillsPage() {
         currency: extractedData.currency || userRegion?.defaultCurrency || "INR",
         taxType: extractedData.taxType || userRegion?.defaultTaxType || "GST",
         ...extractedData,
+        category: finalCategory,
         fileName: file.name,
       });
       setIsEditingNew(true);
@@ -340,6 +349,26 @@ export default function BillsPage() {
     setUploadedFile(null);
   };
 
+  // Categorization Rules Handlers
+  const handleAddRule = () => {
+    if (!newRulePattern.trim()) return;
+    const newRule: CategorizationRule = {
+      id: "rule-" + Math.random().toString(36).substr(2, 9),
+      pattern: newRulePattern.trim(),
+      category: newRuleCategory
+    };
+    const updated = [...rulesList, newRule];
+    setRulesList(updated);
+    saveRules(updated);
+    setNewRulePattern("");
+  };
+
+  const handleDeleteRule = (id: string) => {
+    const updated = rulesList.filter((r) => r.id !== id);
+    setRulesList(updated);
+    saveRules(updated);
+  };
+
   // Filter logic
   const filteredBills = bills.filter((b) => {
     const matchesSearch =
@@ -360,13 +389,22 @@ export default function BillsPage() {
             <h1 className="text-3xl font-extrabold text-white tracking-tight">Bill Management</h1>
             <p className="text-slate-400 text-sm mt-1">Upload, review and manage scanned invoices</p>
           </div>
-          <button
-            onClick={startManualEntry}
-            className="flex items-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-medium px-4 py-2.5 rounded-xl transition-all"
-          >
-            <Plus className="h-4 w-4" />
-            Manual Entry
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowRulesModal(true)}
+              className="flex items-center gap-2 bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500/20 text-purple-300 font-medium px-4 py-2.5 rounded-xl transition-all"
+            >
+              <Tag className="h-4 w-4" />
+              Auto-Rules
+            </button>
+            <button
+              onClick={startManualEntry}
+              className="flex items-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-white font-medium px-4 py-2.5 rounded-xl transition-all"
+            >
+              <Plus className="h-4 w-4" />
+              Manual Entry
+            </button>
+          </div>
         </div>
 
         {/* Upload Dashboard Container */}
@@ -510,12 +548,29 @@ export default function BillsPage() {
                   <div className="flex justify-between items-end pt-2">
                     <div>
                       <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Total Amount</p>
-                      <p className="text-xl font-extrabold text-white mt-0.5">{getCurrencySymbol(b.currency)}{b.totalAmount.toFixed(2)}</p>
+                      <div className="flex flex-col">
+                        <p className="text-xl font-extrabold text-white mt-0.5">
+                          {getCurrencySymbol(b.currency)}{b.totalAmount.toFixed(2)}
+                        </p>
+                        {b.currency && userRegion?.defaultCurrency && b.currency !== userRegion.defaultCurrency && (
+                          <span 
+                            className="text-[11px] font-medium text-purple-400 mt-0.5" 
+                            title={`Exchange Rate: 1 ${b.currency} = ${(convertCurrency(1, b.currency, userRegion.defaultCurrency, exchangeRates)).toFixed(4)} ${userRegion.defaultCurrency}`}
+                          >
+                            ≈ {getCurrencySymbol(userRegion.defaultCurrency)}{convertCurrency(b.totalAmount, b.currency, userRegion.defaultCurrency, exchangeRates).toFixed(2)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     {b.gstAmount > 0 && (
                       <div className="text-right">
                         <p className="text-[10px] text-emerald-500 uppercase tracking-widest font-semibold">{b.taxType || "GST"} Paid</p>
                         <p className="text-sm font-bold text-emerald-400 mt-0.5">{getCurrencySymbol(b.currency)}{b.gstAmount.toFixed(2)}</p>
+                        {b.currency && userRegion?.defaultCurrency && b.currency !== userRegion.defaultCurrency && (
+                          <span className="text-[10px] font-medium text-emerald-500/80 mt-0.5 block">
+                            ≈ {getCurrencySymbol(userRegion.defaultCurrency)}{convertCurrency(b.gstAmount, b.currency, userRegion.defaultCurrency, exchangeRates).toFixed(2)}
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -668,7 +723,16 @@ export default function BillsPage() {
                       <input
                         type="text"
                         value={editingBill.vendorName || ""}
-                        onChange={(e) => setEditingBill({ ...editingBill, vendorName: e.target.value })}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const activeRules = loadRules();
+                          const finalCategory = applyRules(val, editingBill.category || "Miscellaneous", activeRules);
+                          setEditingBill({
+                            ...editingBill,
+                            vendorName: val,
+                            category: finalCategory as any
+                          });
+                        }}
                         className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
                       />
                     </div>
@@ -772,6 +836,29 @@ export default function BillsPage() {
                             onChange={(e) => setEditingBill({ ...editingBill, igst: parseFloat(e.target.value) || 0 })}
                             className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none"
                           />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Live Currency Conversion Preview */}
+                    {editingBill.currency && userRegion?.defaultCurrency && editingBill.currency !== userRegion.defaultCurrency && (
+                      <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl space-y-2 mt-4">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-slate-400 font-medium">Home Currency Conversion</span>
+                          <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full border border-purple-500/30 font-semibold uppercase">
+                            Live Rate
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-end">
+                          <div>
+                            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Converted Total</p>
+                            <p className="text-lg font-bold text-purple-300 mt-0.5">
+                              {getCurrencySymbol(userRegion.defaultCurrency)}{convertCurrency(editingBill.totalAmount || 0, editingBill.currency, userRegion.defaultCurrency, exchangeRates).toFixed(2)}
+                            </p>
+                          </div>
+                          <div className="text-right text-[11px] text-slate-400">
+                            1 {editingBill.currency} = {convertCurrency(1, editingBill.currency, userRegion.defaultCurrency, exchangeRates).toFixed(4)} {userRegion.defaultCurrency}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -885,29 +972,38 @@ export default function BillsPage() {
 
                             {alertItem.disputeScript && (
                               <div className="mt-3 p-3 rounded-lg bg-black/40 border border-white/5 relative z-10">
-                                <div className="flex justify-between items-center mb-1 text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
+                                <div className="flex justify-between items-center mb-1 text-[10px] text-slate-500 font-semibold uppercase tracking-wider gap-3 flex-wrap">
                                   <span>AI Suggested Dispute Script</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      navigator.clipboard.writeText(alertItem.disputeScript);
-                                      setCopiedAlertIndex(idx);
-                                      setTimeout(() => setCopiedAlertIndex(null), 2000);
-                                    }}
-                                    className="text-purple-400 hover:text-purple-300 flex items-center gap-1 normal-case font-bold"
-                                  >
-                                    {copiedAlertIndex === idx ? (
-                                      <>
-                                        <Check className="h-3 w-3 text-emerald-400" />
-                                        <span className="text-emerald-400">Copied!</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <Copy className="h-3 w-3" />
-                                        <span>Copy Script</span>
-                                      </>
-                                    )}
-                                  </button>
+                                  <div className="flex items-center gap-3">
+                                    <a
+                                      href={`mailto:?subject=${encodeURIComponent(`Billing Inquiry / Dispute: ${editingBill.vendorName || ""}`)}&body=${encodeURIComponent(`Hi ${editingBill.vendorName || ""} Support Team,\n\nI am writing regarding my bill dated ${editingBill.date || ""} (Invoice/Bill: ${editingBill.billNumber || "N/A"}).\n\nI would appreciate your clarification on the following charge:\n\n"${alertItem.disputeScript}"\n\nCould you please look into this and waive or refund this amount if applicable?\n\nThank you,\n${user?.displayName || "Valued Customer"}`)}`}
+                                      className="text-purple-400 hover:text-purple-300 flex items-center gap-1 font-bold normal-case"
+                                    >
+                                      <Mail className="h-3.5 w-3.5" />
+                                      <span>Draft Email</span>
+                                    </a>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(alertItem.disputeScript);
+                                        setCopiedAlertIndex(idx);
+                                        setTimeout(() => setCopiedAlertIndex(null), 2000);
+                                      }}
+                                      className="text-purple-400 hover:text-purple-300 flex items-center gap-1 normal-case font-bold"
+                                    >
+                                      {copiedAlertIndex === idx ? (
+                                        <>
+                                          <Check className="h-3 w-3 text-emerald-400" />
+                                          <span className="text-emerald-400">Copied!</span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Copy className="h-3 w-3" />
+                                          <span>Copy Script</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  </div>
                                 </div>
                                 <p className="text-slate-300 italic text-[11px] leading-relaxed">
                                   "{alertItem.disputeScript}"
@@ -1003,6 +1099,100 @@ export default function BillsPage() {
                 >
                   Close & Edit Manually
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Manage Categorization Rules Modal */}
+        {showRulesModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setShowRulesModal(false)}
+            ></div>
+
+            <div className="glass-card max-w-lg w-full rounded-3xl border border-white/10 bg-[#161224] p-6 shadow-2xl relative z-10 space-y-6">
+              <div className="flex justify-between items-center pb-4 border-b border-white/5">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Tag className="h-5 w-5 text-purple-400" />
+                  Auto-Categorization Rules
+                </h3>
+                <button
+                  onClick={() => setShowRulesModal(false)}
+                  className="text-slate-400 hover:text-white"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Add New Rule Form */}
+              <div className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl space-y-3">
+                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Create Rule</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-slate-400 font-semibold block">IF VENDOR NAME CONTAINS</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. AWS, Github, Uber"
+                      value={newRulePattern}
+                      onChange={(e) => setNewRulePattern(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-purple-500 font-semibold"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-slate-400 font-semibold block">THEN SET CATEGORY TO</label>
+                    <select
+                      value={newRuleCategory}
+                      onChange={(e) => setNewRuleCategory(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-[#161224] border border-white/10 text-white text-xs focus:outline-none focus:border-purple-500"
+                    >
+                      {categories.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <button
+                  onClick={handleAddRule}
+                  className="w-full py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs rounded-xl shadow transition-all active:scale-[0.98]"
+                >
+                  Create Categorization Rule
+                </button>
+              </div>
+
+              {/* Rules List */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Active Rules</h4>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {rulesList.map((rule) => (
+                    <div
+                      key={rule.id}
+                      className="flex justify-between items-center p-3 bg-black/20 border border-white/5 rounded-xl text-xs"
+                    >
+                      <div className="space-y-0.5">
+                        <span className="text-slate-400 font-medium block">
+                          If Vendor contains: <strong className="text-white">"{rule.pattern}"</strong>
+                        </span>
+                        <span className="text-purple-400 font-semibold uppercase text-[10px] tracking-wider block">
+                          Assign Category: {rule.category}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteRule(rule.id)}
+                        className="text-slate-500 hover:text-red-400 p-1"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+
+                  {rulesList.length === 0 && (
+                    <p className="text-xs text-slate-500 italic text-center py-4">No active rules defined.</p>
+                  )}
+                </div>
               </div>
             </div>
           </div>

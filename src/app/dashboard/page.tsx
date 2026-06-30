@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { fetchBills, Bill } from "@/services/billService";
 import Sidebar from "@/components/Sidebar";
 import { detectUserRegion } from "@/lib/geo";
+import { convertCurrency, getCurrencySymbol, fetchExchangeRates } from "@/lib/currency";
 import {
   Receipt,
   DollarSign,
@@ -32,35 +33,6 @@ import {
   Area,
 } from "recharts";
 
-const EXCHANGE_RATES: Record<string, number> = {
-  USD: 1.0,
-  INR: 0.012,
-  EUR: 1.08,
-  GBP: 1.27,
-  CAD: 0.73,
-  AUD: 0.66,
-};
-
-const convertCurrency = (amount: number, from: string = "USD", to: string): number => {
-  const fromRate = EXCHANGE_RATES[from] || 1.0;
-  const toRate = EXCHANGE_RATES[to] || 1.0;
-  // Convert from currency to USD base first, then to target currency
-  const amountInUsd = amount * fromRate;
-  return amountInUsd / toRate;
-};
-
-const getCurrencySymbol = (currency?: string) => {
-  switch (currency) {
-    case "USD": return "$";
-    case "EUR": return "€";
-    case "GBP": return "£";
-    case "CAD": return "C$";
-    case "AUD": return "A$";
-    case "INR": return "₹";
-    default: return "$";
-  }
-};
-
 export default function Dashboard() {
   const { user, loading: authLoading, sendVerificationEmail } = useAuth();
   const router = useRouter();
@@ -69,6 +41,7 @@ export default function Dashboard() {
   const [mounted, setMounted] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
   const [dashboardCurrency, setDashboardCurrency] = useState("USD");
+  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
   const [sendingVerification, setSendingVerification] = useState(false);
 
   const handleResendVerification = async () => {
@@ -98,6 +71,9 @@ export default function Dashboard() {
           const region = await detectUserRegion();
           setDashboardCurrency(region.defaultCurrency);
 
+          const rates = await fetchExchangeRates();
+          setExchangeRates(rates);
+
           const list = await fetchBills(user.uid);
           setBills(list);
         } catch (error) {
@@ -120,8 +96,8 @@ export default function Dashboard() {
 
   // Dashboard Stats Calculations
   const totalBills = bills.length;
-  const totalExpense = bills.reduce((acc, b) => acc + convertCurrency(b.totalAmount, b.currency || "INR", dashboardCurrency), 0);
-  const totalGstPaid = bills.reduce((acc, b) => acc + convertCurrency(b.gstAmount, b.currency || "INR", dashboardCurrency), 0);
+  const totalExpense = bills.reduce((acc, b) => acc + convertCurrency(b.totalAmount, b.currency || "INR", dashboardCurrency, exchangeRates), 0);
+  const totalGstPaid = bills.reduce((acc, b) => acc + convertCurrency(b.gstAmount, b.currency || "INR", dashboardCurrency, exchangeRates), 0);
   // Estimate Tax Saved: Input tax credit saves dollar-for-dollar from liability
   const taxSaved = totalGstPaid; 
 
@@ -152,8 +128,8 @@ export default function Dashboard() {
       if (!monthlyDataMap[monthLabel]) {
         monthlyDataMap[monthLabel] = { month: monthLabel, expense: 0, tax: 0 };
       }
-      monthlyDataMap[monthLabel].expense += convertCurrency(b.totalAmount, b.currency || "INR", dashboardCurrency);
-      monthlyDataMap[monthLabel].tax += convertCurrency(b.gstAmount, b.currency || "INR", dashboardCurrency);
+      monthlyDataMap[monthLabel].expense += convertCurrency(b.totalAmount, b.currency || "INR", dashboardCurrency, exchangeRates);
+      monthlyDataMap[monthLabel].tax += convertCurrency(b.gstAmount, b.currency || "INR", dashboardCurrency, exchangeRates);
     }
   });
 
@@ -166,7 +142,7 @@ export default function Dashboard() {
   const categoryMap: { [category: string]: number } = {};
   bills.forEach((b) => {
     const cat = b.category || "Miscellaneous";
-    categoryMap[cat] = (categoryMap[cat] || 0) + convertCurrency(b.totalAmount, b.currency || "INR", dashboardCurrency);
+    categoryMap[cat] = (categoryMap[cat] || 0) + convertCurrency(b.totalAmount, b.currency || "INR", dashboardCurrency, exchangeRates);
   });
 
   const COLORS = [
@@ -217,7 +193,7 @@ export default function Dashboard() {
     if (missingGstinCount > 0) {
       insights.push({
         title: "Claimable Input Tax Credit (ITC)",
-        description: `You have ${missingGstinCount} bills with GST paid but no Vendor GSTIN registered. Add GSTIN to save up to ${getCurrencySymbol(dashboardCurrency)} ${bills.reduce((a, b) => a + (!b.gstin ? convertCurrency(b.gstAmount, b.currency || "INR", dashboardCurrency) : 0), 0).toFixed(0)} in taxes.`,
+        description: `You have ${missingGstinCount} bills with GST paid but no Vendor GSTIN registered. Add GSTIN to save up to ${getCurrencySymbol(dashboardCurrency)} ${bills.reduce((a, b) => a + (!b.gstin ? convertCurrency(b.gstAmount, b.currency || "INR", dashboardCurrency, exchangeRates) : 0), 0).toFixed(0)} in taxes.`,
         type: "tax",
       });
     } else {
@@ -247,7 +223,7 @@ export default function Dashboard() {
     const billsWithAlerts = bills.filter((b) => b.auditAlerts && b.auditAlerts.length > 0);
     const totalAlertsCount = billsWithAlerts.reduce((acc, b) => acc + (b.auditAlerts?.length || 0), 0);
     const potentialSavings = billsWithAlerts.reduce(
-      (acc, b) => acc + (b.auditAlerts?.reduce((sumAlerts, alert) => sumAlerts + convertCurrency(alert.amount, b.currency || "INR", dashboardCurrency), 0) || 0),
+      (acc, b) => acc + (b.auditAlerts?.reduce((sumAlerts, alert) => sumAlerts + convertCurrency(alert.amount, b.currency || "INR", dashboardCurrency, exchangeRates), 0) || 0),
       0
     );
 

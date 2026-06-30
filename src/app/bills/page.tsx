@@ -25,6 +25,9 @@ import {
   PlusCircle,
   XCircle,
   Loader2,
+  AlertTriangle,
+  Copy,
+  Check,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -52,6 +55,7 @@ export default function BillsPage() {
   // AI Auditing and Duplicate Detection States
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [policyWarning, setPolicyWarning] = useState<string | null>(null);
+  const [copiedAlertIndex, setCopiedAlertIndex] = useState<number | null>(null);
 
   // SaaS subscription modal trigger
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -460,9 +464,17 @@ export default function BillsPage() {
                 {/* Header info */}
                 <div className="p-5 space-y-4">
                   <div className="flex justify-between items-start">
-                    <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300">
-                      {b.category}
-                    </span>
+                    <div className="flex gap-1.5 items-center flex-wrap">
+                      <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300">
+                        {b.category}
+                      </span>
+                      {b.auditAlerts && b.auditAlerts.length > 0 && (
+                        <span className="inline-flex items-center gap-1 text-[9px] uppercase font-extrabold tracking-wider px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                          <AlertTriangle className="h-2.5 w-2.5 text-amber-400" />
+                          Shield Flagged
+                        </span>
+                      )}
+                    </div>
                     <span className="text-xs text-slate-400 font-semibold">{b.date}</span>
                   </div>
 
@@ -769,6 +781,74 @@ export default function BillsPage() {
                       <p className="text-xs text-slate-500 italic text-center py-6">No line items specified</p>
                     )}
                   </div>
+
+                  {/* AI Bill Shield Alerts Section */}
+                  {editingBill.auditAlerts && editingBill.auditAlerts.length > 0 && (
+                    <div className="space-y-4 pt-4 border-t border-white/5">
+                      <div className="flex items-center gap-2 text-purple-400 font-semibold text-xs tracking-wider uppercase">
+                        <Sparkles className="h-4 w-4 text-purple-400" />
+                        <h3>AI Bill Shield Audits</h3>
+                      </div>
+                      <div className="space-y-3">
+                        {editingBill.auditAlerts.map((alertItem, idx) => (
+                          <div
+                            key={idx}
+                            className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/20 text-xs space-y-2 relative overflow-hidden"
+                          >
+                            <div className="absolute top-0 right-0 w-16 h-16 bg-amber-500/5 rounded-full blur-xl"></div>
+                            <div className="flex justify-between items-start gap-2 relative z-10">
+                              <div className="flex gap-2">
+                                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                                <div>
+                                  <span className="font-semibold text-white block">
+                                    {alertItem.lineItem} (₹{alertItem.amount})
+                                  </span>
+                                  <span className="text-slate-400 block mt-1 font-medium leading-relaxed">
+                                    {alertItem.explanation}
+                                  </span>
+                                </div>
+                              </div>
+                              <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded text-[10px] uppercase font-bold shrink-0">
+                                {alertItem.type.replace("_", " ")}
+                              </span>
+                            </div>
+
+                            {alertItem.disputeScript && (
+                              <div className="mt-3 p-3 rounded-lg bg-black/40 border border-white/5 relative z-10">
+                                <div className="flex justify-between items-center mb-1 text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
+                                  <span>AI Suggested Dispute Script</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(alertItem.disputeScript);
+                                      setCopiedAlertIndex(idx);
+                                      setTimeout(() => setCopiedAlertIndex(null), 2000);
+                                    }}
+                                    className="text-purple-400 hover:text-purple-300 flex items-center gap-1 normal-case font-bold"
+                                  >
+                                    {copiedAlertIndex === idx ? (
+                                      <>
+                                        <Check className="h-3 w-3 text-emerald-400" />
+                                        <span className="text-emerald-400">Copied!</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy className="h-3 w-3" />
+                                        <span>Copy Script</span>
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+                                <p className="text-slate-300 italic text-[11px] leading-relaxed">
+                                  "{alertItem.disputeScript}"
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Document preview if available */}
                   {uploadedFile && (

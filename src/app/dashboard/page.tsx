@@ -209,6 +209,19 @@ export default function Dashboard() {
       });
     }
 
+    // AI Bill Shield Auditing Sentry Check
+    const billsWithAlerts = bills.filter((b) => b.auditAlerts && b.auditAlerts.length > 0);
+    const totalAlertsCount = billsWithAlerts.reduce((acc, b) => acc + (b.auditAlerts?.length || 0), 0);
+    const potentialSavings = billsWithAlerts.reduce((acc, b) => acc + (b.auditAlerts?.reduce((sumAlerts, alert) => sumAlerts + alert.amount, 0) || 0), 0);
+
+    if (totalAlertsCount > 0) {
+      insights.push({
+        title: `AI Shield: ${totalAlertsCount} flags`,
+        description: `We identified ${totalAlertsCount} questionable charges (hidden convenience fees or billing anomalies) totaling ₹${potentialSavings.toLocaleString("en-IN")}. Go to 'Bill Management' to dispute them.`,
+        type: "warning",
+      });
+    }
+
     return insights;
   };
 

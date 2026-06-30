@@ -12,7 +12,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
-import { ExtractedBillData } from "@/lib/gemini";
+import { ExtractedBillData, AuditAlert } from "@/lib/gemini";
 
 export interface Bill extends ExtractedBillData {
   id: string;
@@ -49,13 +49,23 @@ function getMockBills(userId: string): Bill[] {
         totalAmount: 9440,
         category: "Software",
         lineItems: [
-          { description: "EC2 Instance Hosting", amount: 6000, qty: 1 },
+          { description: "EC2 Instance Hosting", amount: 5500, qty: 1 },
           { description: "S3 Standard Storage", amount: 2000, qty: 1 },
+          { description: "Unused Idle EBS Volume Surcharge", amount: 500, qty: 1 },
         ],
         fileUrl: "https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=500&auto=format&fit=crop&q=60",
         fileName: "aws_june_invoice.pdf",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        auditAlerts: [
+          {
+            type: "suspicious_item",
+            lineItem: "Unused Idle EBS Volume Surcharge",
+            amount: 500,
+            explanation: "EBS volume has had 0% read/write activity for the past 30 days. AWS is charging a backup surcharge for this orphan volume.",
+            disputeScript: "Hello, I noticed we are paying 500 for an 'Unused Idle EBS Volume Surcharge' on invoice INV-982312. Could you please locate this volume, terminate it, and credit the surcharge amount?"
+          }
+        ]
       },
       {
         id: "mock-2",
@@ -72,13 +82,23 @@ function getMockBills(userId: string): Bill[] {
         totalAmount: 472.5,
         category: "Food",
         lineItems: [
-          { description: "Caramel Macchiato", amount: 250, qty: 1 },
+          { description: "Caramel Macchiato", amount: 200, qty: 1 },
           { description: "Chocolate Croissant", amount: 200, qty: 1 },
+          { description: "Dine-in Packaging Service Fee", amount: 50, qty: 1 },
         ],
         fileUrl: "https://images.unsplash.com/photo-1541167760496-1628856ab772?w=500&auto=format&fit=crop&q=60",
         fileName: "starbucks_receipt.png",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        auditAlerts: [
+          {
+            type: "junk_fee",
+            lineItem: "Dine-in Packaging Service Fee",
+            amount: 50,
+            explanation: "A service surcharge was added to the order for dine-in packaging. This is an optional charge that can be waived.",
+            disputeScript: "Excuse me, I noticed a Dine-in Packaging Service Fee of 50 on my Starbucks receipt. Since I ordered this for dine-in, could you please remove this packaging surcharge?"
+          }
+        ]
       },
       {
         id: "mock-3",
@@ -101,6 +121,7 @@ function getMockBills(userId: string): Bill[] {
         fileName: "uber_ride_bill.png",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        auditAlerts: []
       },
     ];
     localStorage.setItem(MOCK_BILLS_KEY, JSON.stringify(initialMock));

@@ -6,6 +6,14 @@ export const isGeminiConfigured = !!apiKey;
 
 const genAI = isGeminiConfigured ? new GoogleGenerativeAI(apiKey!) : null;
 
+export interface AuditAlert {
+  type: 'junk_fee' | 'tax_discrepancy' | 'suspicious_item';
+  lineItem: string;
+  amount: number;
+  explanation: string;
+  disputeScript: string;
+}
+
 export interface ExtractedBillData {
   vendorName: string;
   billNumber: string;
@@ -19,6 +27,7 @@ export interface ExtractedBillData {
   totalAmount: number;
   category: "Fuel" | "Food" | "Travel" | "Office Expense" | "Marketing" | "Internet" | "Software" | "Miscellaneous";
   lineItems: { description: string; amount: number; qty?: number }[];
+  auditAlerts?: AuditAlert[];
 }
 
 async function analyzeBillWithOpenRouter(
@@ -51,27 +60,42 @@ async function analyzeBillWithOpenRouter(
             {
               type: "text",
               text: `
-                Analyze this bill/receipt/invoice and extract the following structured details. Return ONLY a valid JSON object matching this schema:
-                {
-                  "vendorName": "Name of the merchant/vendor (string)",
-                  "billNumber": "Invoice or Bill Number (string, empty if not found)",
-                  "date": "Date of issue in YYYY-MM-DD format (string, empty if not found)",
-                  "gstin": "GSTIN number of the vendor if available (string, empty if not found)",
-                  "subtotal": 0.0 (number),
-                  "gstAmount": 0.0 (total GST/Tax amount, number),
-                  "cgst": 0.0 (CGST amount if specified, number),
-                  "sgst": 0.0 (SGST amount if specified, number),
-                  "igst": 0.0 (IGST amount if specified, number),
-                  "totalAmount": 0.0 (total final payable amount, number),
-                  "category": "One of: Fuel, Food, Travel, Office Expense, Marketing, Internet, Software, Miscellaneous",
-                  "lineItems": [
-                    {
-                      "description": "Item description (string)",
-                      "amount": 0.0 (total price for this item, number),
-                      "qty": 1 (quantity, number, optional)
-                    }
-                  ]
-                }
+                 Analyze this bill/receipt/invoice and extract the following structured details. Return ONLY a valid JSON object matching this schema:
+                 {
+                   "vendorName": "Name of the merchant/vendor (string)",
+                   "billNumber": "Invoice or Bill Number (string, empty if not found)",
+                   "date": "Date of issue in YYYY-MM-DD format (string, empty if not found)",
+                   "gstin": "GSTIN number of the vendor if available (string, empty if not found)",
+                   "subtotal": 0.0 (number),
+                   "gstAmount": 0.0 (total GST/Tax amount, number),
+                   "cgst": 0.0 (CGST amount if specified, number),
+                   "sgst": 0.0 (SGST amount if specified, number),
+                   "igst": 0.0 (IGST amount if specified, number),
+                   "totalAmount": 0.0 (total final payable amount, number),
+                   "category": "One of: Fuel, Food, Travel, Office Expense, Marketing, Internet, Software, Miscellaneous",
+                   "lineItems": [
+                     {
+                       "description": "Item description (string)",
+                       "amount": 0.0 (total price for this item, number),
+                       "qty": 1 (quantity, number, optional)
+                     }
+                   ],
+                   "auditAlerts": [
+                     {
+                       "type": "junk_fee | tax_discrepancy | suspicious_item",
+                       "lineItem": "Name of the flagged charge/line item (string)",
+                       "amount": 0.0 (amount of the flagged item, number),
+                       "explanation": "Clear explanation of why it was flagged, like 'Restaurant GST should be 5%, not 18%' or 'Optional admin fee' (string)",
+                       "disputeScript": "A pre-written template script in first person for the user to copy/paste to dispute this charge (string)"
+                     }
+                   ]
+                 }
+
+                 Audit Guidelines:
+                 - Flag line items with terms like 'convenience charge', 'admin surcharge', 'service fee', 'facility fee' as 'junk_fee'.
+                 - Flag tax anomalies (e.g. food bills charged with 18% GST instead of 5% restaurant rate, or incorrect sum calculations) as 'tax_discrepancy'.
+                 - Flag duplicate entries, mystery markups, or seat/license discrepancies as 'suspicious_item'.
+                 - If no alerts are found, return an empty array for 'auditAlerts'.
               `.trim(),
             },
             {
@@ -131,9 +155,19 @@ export async function analyzeBill(
       totalAmount: 14160,
       category: "Software",
       lineItems: [
-        { description: "GitHub Copilot Enterprise Seats", amount: 10000, qty: 5 },
+        { description: "GitHub Copilot Enterprise Seats", amount: 9500, qty: 5 },
         { description: "GitHub Actions Runner Minutes", amount: 2000, qty: 1 },
+        { description: "Optional Administrative Charge", amount: 500, qty: 1 },
       ],
+      auditAlerts: [
+        {
+          type: "junk_fee",
+          lineItem: "Optional Administrative Charge",
+          amount: 500,
+          explanation: "Optional or unapproved admin fee. Standard GitHub contracts do not include this charge.",
+          disputeScript: "Dear support team, I noticed an 'Optional Administrative Charge' of 500 on our invoice INV-2026-9812. As this was not contractually agreed upon, I would like to request that this fee be removed from our invoice."
+        }
+      ]
     };
   }
 
@@ -170,8 +204,23 @@ export async function analyzeBill(
             "amount": 0.0 (total price for this item, number),
             "qty": 1 (quantity, number, optional)
           }
+        ],
+        "auditAlerts": [
+          {
+            "type": "junk_fee | tax_discrepancy | suspicious_item",
+            "lineItem": "Name of the flagged charge/line item (string)",
+            "amount": 0.0 (amount of the flagged item, number),
+            "explanation": "Clear explanation of why it was flagged, like 'Restaurant GST should be 5%, not 18%' or 'Optional admin fee' (string)",
+            "disputeScript": "A pre-written template script in first person for the user to copy/paste to dispute this charge (string)"
+          }
         ]
       }
+
+      Audit Guidelines:
+      - Flag line items with terms like 'convenience charge', 'admin surcharge', 'service fee', 'facility fee' as 'junk_fee'.
+      - Flag tax anomalies (e.g. food bills charged with 18% GST instead of 5% restaurant rate, or incorrect sum calculations) as 'tax_discrepancy'.
+      - Flag duplicate entries, mystery markups, or seat/license discrepancies as 'suspicious_item'.
+      - If no alerts are found, return an empty array for 'auditAlerts'.
 
       Notes:
       - If GST is not explicitly broken down into CGST/SGST/IGST, set those fields to 0, but extract gstAmount if total tax is visible.

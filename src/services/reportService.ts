@@ -7,13 +7,12 @@ export function exportBillsToExcel(bills: Bill[], fileName = "bills_report") {
     "Vendor Name": b.vendorName,
     "Bill Number": b.billNumber || "N/A",
     "Category": b.category,
-    "GSTIN": b.gstin || "N/A",
-    "Subtotal (INR)": b.subtotal,
-    "GST Paid (INR)": b.gstAmount,
-    "CGST (INR)": b.cgst,
-    "SGST (INR)": b.sgst,
-    "IGST (INR)": b.igst,
-    "Total Amount (INR)": b.totalAmount,
+    "Tax System": b.taxType || "GST",
+    "Tax ID": b.taxId || b.gstin || "N/A",
+    "Currency": b.currency || "INR",
+    "Subtotal": b.subtotal,
+    "Tax Amount": b.gstAmount,
+    "Total Amount": b.totalAmount,
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(data);
@@ -26,12 +25,11 @@ export function exportBillsToExcel(bills: Bill[], fileName = "bills_report") {
     { wch: 25 }, // Vendor Name
     { wch: 15 }, // Bill Number
     { wch: 15 }, // Category
-    { wch: 18 }, // GSTIN
+    { wch: 15 }, // Tax System
+    { wch: 18 }, // Tax ID
+    { wch: 10 }, // Currency
     { wch: 15 }, // Subtotal
-    { wch: 15 }, // GST
-    { wch: 10 }, // CGST
-    { wch: 10 }, // SGST
-    { wch: 10 }, // IGST
+    { wch: 15 }, // Tax Amount
     { wch: 18 }, // Total
   ];
   worksheet["!cols"] = maxProps;
@@ -56,11 +54,27 @@ export async function exportBillsToPDF(bills: Bill[], title = "Expense & Tax Rep
   doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 26);
   doc.text(`Total Records: ${bills.length}`, 14, 31);
 
-  const totalExpense = bills.reduce((acc, b) => acc + b.totalAmount, 0);
-  const totalGST = bills.reduce((acc, b) => acc + b.gstAmount, 0);
+  const totalExpenseString = bills
+    .map((b) => b.currency || "INR")
+    .filter((v, i, self) => self.indexOf(v) === i)
+    .map((curr) => {
+      const sum = bills.filter((b) => (b.currency || "INR") === curr).reduce((acc, b) => acc + b.totalAmount, 0);
+      return `${curr} ${sum.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+    })
+    .join(" | ");
+
+  const totalTaxString = bills
+    .map((b) => b.currency || "INR")
+    .filter((v, i, self) => self.indexOf(v) === i)
+    .map((curr) => {
+      const sum = bills.filter((b) => (b.currency || "INR") === curr).reduce((acc, b) => acc + b.gstAmount, 0);
+      return `${curr} ${sum.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+    })
+    .join(" | ");
+
   doc.setFontSize(11);
   doc.setTextColor(15, 23, 42); // slate-900
-  doc.text(`Total Expense: INR ${totalExpense.toFixed(2)}  |  Total GST Paid: INR ${totalGST.toFixed(2)}`, 14, 38);
+  doc.text(`Total Expense: ${totalExpenseString || "None"}  |  Total Tax Paid: ${totalTaxString || "None"}`, 14, 38);
 
   const headers = [
     [
@@ -68,12 +82,11 @@ export async function exportBillsToPDF(bills: Bill[], title = "Expense & Tax Rep
       "Vendor",
       "Bill #",
       "Category",
-      "GSTIN",
+      "Tax System",
+      "Tax ID",
+      "Currency",
       "Subtotal",
-      "CGST",
-      "SGST",
-      "IGST",
-      "GST Paid",
+      "Tax Paid",
       "Total",
     ],
   ];
@@ -83,11 +96,10 @@ export async function exportBillsToPDF(bills: Bill[], title = "Expense & Tax Rep
     b.vendorName,
     b.billNumber || "-",
     b.category,
-    b.gstin || "-",
+    b.taxType || "GST",
+    b.taxId || b.gstin || "-",
+    b.currency || "INR",
     b.subtotal.toFixed(2),
-    b.cgst.toFixed(2),
-    b.sgst.toFixed(2),
-    b.igst.toFixed(2),
     b.gstAmount.toFixed(2),
     b.totalAmount.toFixed(2),
   ]);

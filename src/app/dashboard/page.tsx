@@ -7,7 +7,7 @@ import { fetchBills, Bill } from "@/services/billService";
 import Sidebar from "@/components/Sidebar";
 import {
   Receipt,
-  IndianRupee,
+  DollarSign,
   Coins,
   TrendingDown,
   TrendingUp,
@@ -31,6 +31,35 @@ import {
   Area,
 } from "recharts";
 
+const EXCHANGE_RATES: Record<string, number> = {
+  USD: 1.0,
+  INR: 0.012,
+  EUR: 1.08,
+  GBP: 1.27,
+  CAD: 0.73,
+  AUD: 0.66,
+};
+
+const convertCurrency = (amount: number, from: string = "USD", to: string): number => {
+  const fromRate = EXCHANGE_RATES[from] || 1.0;
+  const toRate = EXCHANGE_RATES[to] || 1.0;
+  // Convert from currency to USD base first, then to target currency
+  const amountInUsd = amount * fromRate;
+  return amountInUsd / toRate;
+};
+
+const getCurrencySymbol = (currency?: string) => {
+  switch (currency) {
+    case "USD": return "$";
+    case "EUR": return "€";
+    case "GBP": return "£";
+    case "CAD": return "C$";
+    case "AUD": return "A$";
+    case "INR": return "₹";
+    default: return "$";
+  }
+};
+
 export default function Dashboard() {
   const { user, loading: authLoading, sendVerificationEmail } = useAuth();
   const router = useRouter();
@@ -38,6 +67,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
+  const [dashboardCurrency, setDashboardCurrency] = useState("USD");
   const [sendingVerification, setSendingVerification] = useState(false);
 
   const handleResendVerification = async () => {
@@ -86,9 +116,9 @@ export default function Dashboard() {
 
   // Dashboard Stats Calculations
   const totalBills = bills.length;
-  const totalExpense = bills.reduce((acc, b) => acc + b.totalAmount, 0);
-  const totalGstPaid = bills.reduce((acc, b) => acc + b.gstAmount, 0);
-  // Estimate Tax Saved: Input tax credit saves rupee-for-rupee from liability
+  const totalExpense = bills.reduce((acc, b) => acc + convertCurrency(b.totalAmount, b.currency || "INR", dashboardCurrency), 0);
+  const totalGstPaid = bills.reduce((acc, b) => acc + convertCurrency(b.gstAmount, b.currency || "INR", dashboardCurrency), 0);
+  // Estimate Tax Saved: Input tax credit saves dollar-for-dollar from liability
   const taxSaved = totalGstPaid; 
 
   const parseDateString = (dateStr: string): Date => {
@@ -118,8 +148,8 @@ export default function Dashboard() {
       if (!monthlyDataMap[monthLabel]) {
         monthlyDataMap[monthLabel] = { month: monthLabel, expense: 0, tax: 0 };
       }
-      monthlyDataMap[monthLabel].expense += b.totalAmount;
-      monthlyDataMap[monthLabel].tax += b.gstAmount;
+      monthlyDataMap[monthLabel].expense += convertCurrency(b.totalAmount, b.currency || "INR", dashboardCurrency);
+      monthlyDataMap[monthLabel].tax += convertCurrency(b.gstAmount, b.currency || "INR", dashboardCurrency);
     }
   });
 
@@ -132,7 +162,7 @@ export default function Dashboard() {
   const categoryMap: { [category: string]: number } = {};
   bills.forEach((b) => {
     const cat = b.category || "Miscellaneous";
-    categoryMap[cat] = (categoryMap[cat] || 0) + b.totalAmount;
+    categoryMap[cat] = (categoryMap[cat] || 0) + convertCurrency(b.totalAmount, b.currency || "INR", dashboardCurrency);
   });
 
   const COLORS = [
@@ -178,12 +208,12 @@ export default function Dashboard() {
       });
     }
 
-    // GSTIN validity check
+    // Tax credits check
     const missingGstinCount = bills.filter((b) => !b.gstin && b.gstAmount > 0).length;
     if (missingGstinCount > 0) {
       insights.push({
         title: "Claimable Input Tax Credit (ITC)",
-        description: `You have ${missingGstinCount} bills with GST paid but no Vendor GSTIN registered. Add GSTIN to save up to INR ${bills.reduce((a, b) => a + (!b.gstin ? b.gstAmount : 0), 0).toFixed(0)} in taxes.`,
+        description: `You have ${missingGstinCount} bills with GST paid but no Vendor GSTIN registered. Add GSTIN to save up to ${getCurrencySymbol(dashboardCurrency)} ${bills.reduce((a, b) => a + (!b.gstin ? convertCurrency(b.gstAmount, b.currency || "INR", dashboardCurrency) : 0), 0).toFixed(0)} in taxes.`,
         type: "tax",
       });
     } else {
@@ -212,12 +242,15 @@ export default function Dashboard() {
     // AI Bill Shield Auditing Sentry Check
     const billsWithAlerts = bills.filter((b) => b.auditAlerts && b.auditAlerts.length > 0);
     const totalAlertsCount = billsWithAlerts.reduce((acc, b) => acc + (b.auditAlerts?.length || 0), 0);
-    const potentialSavings = billsWithAlerts.reduce((acc, b) => acc + (b.auditAlerts?.reduce((sumAlerts, alert) => sumAlerts + alert.amount, 0) || 0), 0);
+    const potentialSavings = billsWithAlerts.reduce(
+      (acc, b) => acc + (b.auditAlerts?.reduce((sumAlerts, alert) => sumAlerts + convertCurrency(alert.amount, b.currency || "INR", dashboardCurrency), 0) || 0),
+      0
+    );
 
     if (totalAlertsCount > 0) {
       insights.push({
         title: `AI Shield: ${totalAlertsCount} flags`,
-        description: `We identified ${totalAlertsCount} questionable charges (hidden convenience fees or billing anomalies) totaling ₹${potentialSavings.toLocaleString("en-IN")}. Go to 'Bill Management' to dispute them.`,
+        description: `We identified ${totalAlertsCount} questionable charges (hidden convenience fees or billing anomalies) totaling ${getCurrencySymbol(dashboardCurrency)}${potentialSavings.toLocaleString(undefined, { maximumFractionDigits: 0 })}. Go to 'Bill Management' to dispute them.`,
         type: "warning",
       });
     }
@@ -239,13 +272,28 @@ export default function Dashboard() {
             <h1 className="text-3xl font-extrabold text-white tracking-tight">Dashboard</h1>
             <p className="text-slate-400 text-sm mt-1">Real-time expense insights and tax tracking</p>
           </div>
-          <button
-            onClick={() => router.push("/bills")}
-            className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium px-4 py-2.5 rounded-xl transition-all shadow-md shadow-purple-500/10 active:scale-[0.98]"
-          >
-            Upload Bill
-            <ArrowUpRight className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <select
+              value={dashboardCurrency}
+              onChange={(e) => setDashboardCurrency(e.target.value)}
+              className="bg-black/40 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500 font-semibold"
+            >
+              <option value="USD">Base Currency: USD ($)</option>
+              <option value="INR">Base Currency: INR (₹)</option>
+              <option value="EUR">Base Currency: EUR (€)</option>
+              <option value="GBP">Base Currency: GBP (£)</option>
+              <option value="CAD">Base Currency: CAD (C$)</option>
+              <option value="AUD">Base Currency: AUD (A$)</option>
+            </select>
+
+            <button
+              onClick={() => router.push("/bills")}
+              className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-medium px-4 py-2.5 rounded-xl transition-all shadow-md shadow-purple-500/10 active:scale-[0.98] shrink-0"
+            >
+              Upload Bill
+              <ArrowUpRight className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Email Verification Banner */}
@@ -299,11 +347,11 @@ export default function Dashboard() {
               <div>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Expense</p>
                 <h3 className="text-3xl font-bold text-white mt-2">
-                  {loading ? "..." : `₹${totalExpense.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
+                  {loading ? "..." : `${getCurrencySymbol(dashboardCurrency)}${totalExpense.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
                 </h3>
               </div>
               <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-xl">
-                <IndianRupee className="h-5 w-5" />
+                <DollarSign className="h-5 w-5" />
               </div>
             </div>
             <div className="mt-4 flex items-center gap-1.5 text-xs text-slate-400">
@@ -316,9 +364,9 @@ export default function Dashboard() {
             <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-xl"></div>
             <div className="flex justify-between items-start">
               <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">GST Paid</p>
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tax Paid</p>
                 <h3 className="text-3xl font-bold text-white mt-2">
-                  {loading ? "..." : `₹${totalGstPaid.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
+                  {loading ? "..." : `${getCurrencySymbol(dashboardCurrency)}${totalGstPaid.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
                 </h3>
               </div>
               <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl">
@@ -326,7 +374,7 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="mt-4 flex items-center gap-1.5 text-xs text-emerald-400">
-              <span>Calculated CGST, SGST, IGST</span>
+              <span>Calculated GST/VAT/Sales Tax</span>
             </div>
           </div>
 
@@ -337,7 +385,7 @@ export default function Dashboard() {
               <div>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Tax Saved</p>
                 <h3 className="text-3xl font-bold text-white mt-2">
-                  {loading ? "..." : `₹${taxSaved.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
+                  {loading ? "..." : `${getCurrencySymbol(dashboardCurrency)}${taxSaved.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
                 </h3>
               </div>
               <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-xl">
@@ -407,7 +455,7 @@ export default function Dashboard() {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(value: any) => `₹${value.toLocaleString()}`}
+                      formatter={(value: any) => `${getCurrencySymbol(dashboardCurrency)}${value.toLocaleString()}`}
                       contentStyle={{
                         backgroundColor: "#161224",
                         border: "1px solid rgba(255, 255, 255, 0.1)",
@@ -421,7 +469,7 @@ export default function Dashboard() {
                 <div className="absolute text-center">
                   <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Total</p>
                   <p className="text-lg font-bold text-white mt-0.5">
-                    ₹{totalExpense.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
+                    {getCurrencySymbol(dashboardCurrency)}{totalExpense.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                   </p>
                 </div>
               )}

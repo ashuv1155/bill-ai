@@ -31,6 +31,19 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 
+export const getCurrencySymbol = (currency?: string) => {
+  switch (currency) {
+    case "USD": return "$";
+    case "EUR": return "€";
+    case "GBP": return "£";
+    case "CAD": return "C$";
+    case "AUD": return "A$";
+    case "INR":
+    default:
+      return "₹";
+  }
+};
+
 export default function BillsPage() {
   const { user, loading: authLoading, isDemoMode, subscriptionTier, monthlyScanCount, incrementScanCount } = useAuth();
   const router = useRouter();
@@ -75,7 +88,7 @@ export default function BillsPage() {
         );
         if (dup) {
           setDuplicateWarning(
-            `Warning: Duplicate invoice detected (Invoice #${dup.billNumber} from ${dup.vendorName} on ${dup.date} for ₹${dup.totalAmount}).`
+            `Warning: Duplicate invoice detected (Invoice #${dup.billNumber} from ${dup.vendorName} on ${dup.date} for ${getCurrencySymbol(dup.currency)}${dup.totalAmount}).`
           );
         } else {
           setDuplicateWarning(null);
@@ -488,12 +501,12 @@ export default function BillsPage() {
                   <div className="flex justify-between items-end pt-2">
                     <div>
                       <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Total Amount</p>
-                      <p className="text-xl font-extrabold text-white mt-0.5">₹{b.totalAmount.toFixed(2)}</p>
+                      <p className="text-xl font-extrabold text-white mt-0.5">{getCurrencySymbol(b.currency)}{b.totalAmount.toFixed(2)}</p>
                     </div>
                     {b.gstAmount > 0 && (
                       <div className="text-right">
-                        <p className="text-[10px] text-emerald-500 uppercase tracking-widest font-semibold">GST Paid</p>
-                        <p className="text-sm font-bold text-emerald-400 mt-0.5">₹{b.gstAmount.toFixed(2)}</p>
+                        <p className="text-[10px] text-emerald-500 uppercase tracking-widest font-semibold">{b.taxType || "GST"} Paid</p>
+                        <p className="text-sm font-bold text-emerald-400 mt-0.5">{getCurrencySymbol(b.currency)}{b.gstAmount.toFixed(2)}</p>
                       </div>
                     )}
                   </div>
@@ -587,6 +600,61 @@ export default function BillsPage() {
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
+                      <label className="block text-xs text-slate-400 mb-1.5">Currency</label>
+                      <select
+                        value={editingBill.currency || "INR"}
+                        onChange={(e) => setEditingBill({ ...editingBill, currency: e.target.value })}
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
+                      >
+                        <option value="INR">INR (₹)</option>
+                        <option value="USD">USD ($)</option>
+                        <option value="EUR">EUR (€)</option>
+                        <option value="GBP">GBP (£)</option>
+                        <option value="CAD">CAD (C$)</option>
+                        <option value="AUD">AUD (A$)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-400 mb-1.5">Tax System</label>
+                      <select
+                        value={editingBill.taxType || "GST"}
+                        onChange={(e) => setEditingBill({ ...editingBill, taxType: e.target.value as any })}
+                        className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
+                      >
+                        <option value="GST">GST (India/CA/AU)</option>
+                        <option value="VAT">VAT (Europe/UK)</option>
+                        <option value="Sales Tax">Sales Tax (USA)</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-400 mb-1.5 font-medium">
+                      {editingBill.taxType === "GST"
+                        ? "Vendor GSTIN"
+                        : editingBill.taxType === "VAT"
+                        ? "VAT Registration Number"
+                        : editingBill.taxType === "Sales Tax"
+                        ? "Tax ID / EIN"
+                        : "Business Tax Registration Number"}
+                    </label>
+                    <input
+                      type="text"
+                      value={editingBill.taxId || editingBill.gstin || ""}
+                      onChange={(e) => setEditingBill({ 
+                        ...editingBill, 
+                        taxId: e.target.value, 
+                        // Set gstin as fallback for backward compatibility
+                        gstin: editingBill.taxType === "GST" ? e.target.value : "" 
+                      })}
+                      placeholder="e.g. GSTIN, VAT ID, or EIN"
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
                       <label className="block text-xs text-slate-400 mb-1.5">Vendor Name</label>
                       <input
                         type="text"
@@ -632,16 +700,7 @@ export default function BillsPage() {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1.5">Vendor GSTIN</label>
-                    <input
-                      type="text"
-                      value={editingBill.gstin || ""}
-                      onChange={(e) => setEditingBill({ ...editingBill, gstin: e.target.value })}
-                      placeholder="e.g. 27AADCA8981A1Z2"
-                      className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
-                    />
-                  </div>
+
 
                   <div className="border-t border-white/5 pt-4 space-y-4">
                     <h5 className="text-xs font-bold text-slate-300 uppercase tracking-widest">Financial Summary</h5>
@@ -657,7 +716,7 @@ export default function BillsPage() {
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] text-slate-500 mb-1">GST Amount</label>
+                        <label className="block text-[10px] text-slate-500 mb-1">{(editingBill.taxType || "GST")} Amount</label>
                         <input
                           type="number"
                           value={editingBill.gstAmount || 0}
@@ -676,35 +735,37 @@ export default function BillsPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-[10px] text-slate-500 mb-1">CGST</label>
-                        <input
-                          type="number"
-                          value={editingBill.cgst || 0}
-                          onChange={(e) => setEditingBill({ ...editingBill, cgst: parseFloat(e.target.value) || 0 })}
-                          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none"
-                        />
+                    {(!editingBill.taxType || editingBill.taxType === "GST") && (
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-1">CGST</label>
+                          <input
+                            type="number"
+                            value={editingBill.cgst || 0}
+                            onChange={(e) => setEditingBill({ ...editingBill, cgst: parseFloat(e.target.value) || 0 })}
+                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-1">SGST</label>
+                          <input
+                            type="number"
+                            value={editingBill.sgst || 0}
+                            onChange={(e) => setEditingBill({ ...editingBill, sgst: parseFloat(e.target.value) || 0 })}
+                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-1">IGST</label>
+                          <input
+                            type="number"
+                            value={editingBill.igst || 0}
+                            onChange={(e) => setEditingBill({ ...editingBill, igst: parseFloat(e.target.value) || 0 })}
+                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none"
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-[10px] text-slate-500 mb-1">SGST</label>
-                        <input
-                          type="number"
-                          value={editingBill.sgst || 0}
-                          onChange={(e) => setEditingBill({ ...editingBill, sgst: parseFloat(e.target.value) || 0 })}
-                          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] text-slate-500 mb-1">IGST</label>
-                        <input
-                          type="number"
-                          value={editingBill.igst || 0}
-                          onChange={(e) => setEditingBill({ ...editingBill, igst: parseFloat(e.target.value) || 0 })}
-                          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none"
-                        />
-                      </div>
-                    </div>
+                    )}
                   </div>
                 </div>
 
@@ -801,7 +862,7 @@ export default function BillsPage() {
                                 <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
                                 <div>
                                   <span className="font-semibold text-white block">
-                                    {alertItem.lineItem} (₹{alertItem.amount})
+                                    {alertItem.lineItem} ({getCurrencySymbol(editingBill.currency)}{alertItem.amount})
                                   </span>
                                   <span className="text-slate-400 block mt-1 font-medium leading-relaxed">
                                     {alertItem.explanation}

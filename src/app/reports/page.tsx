@@ -18,6 +18,19 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 
+const getCurrencySymbol = (currency?: string) => {
+  switch (currency) {
+    case "USD": return "$";
+    case "EUR": return "€";
+    case "GBP": return "£";
+    case "CAD": return "C$";
+    case "AUD": return "A$";
+    case "INR":
+    default:
+      return "₹";
+  }
+};
+
 export default function ReportsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -27,6 +40,7 @@ export default function ReportsPage() {
   // Filters
   const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState<string>("All");
+  const [selectedCurrency, setSelectedCurrency] = useState<string>("All");
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -141,7 +155,12 @@ export default function ReportsPage() {
       matchesMonth = monthStr === selectedMonth;
     }
 
-    return matchesYear && matchesMonth;
+    let matchesCurrency = true;
+    if (selectedCurrency !== "All") {
+      matchesCurrency = (b.currency || "INR") === selectedCurrency;
+    }
+
+    return matchesYear && matchesMonth && matchesCurrency;
   });
 
   // Calculate aggregates
@@ -204,7 +223,7 @@ export default function ReportsPage() {
             <h3 className="text-sm font-semibold text-white uppercase tracking-wider">Report Filters</h3>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 w-full">
+          <div className="grid grid-cols-3 gap-4 w-full">
             <div>
               <label className="block text-xs text-slate-400 mb-1.5 font-medium">Select Year</label>
               <select
@@ -234,6 +253,23 @@ export default function ReportsPage() {
                 ))}
               </select>
             </div>
+
+            <div>
+              <label className="block text-xs text-slate-400 mb-1.5 font-medium">Currency</label>
+              <select
+                value={selectedCurrency}
+                onChange={(e) => setSelectedCurrency(e.target.value)}
+                className="w-full bg-black/40 border border-white/10 rounded-xl p-2.5 text-sm focus:outline-none focus:border-purple-500 text-white"
+              >
+                <option value="All">All Currencies</option>
+                <option value="USD">USD ($)</option>
+                <option value="INR">INR (₹)</option>
+                <option value="EUR">EUR (€)</option>
+                <option value="GBP">GBP (£)</option>
+                <option value="CAD">CAD (C$)</option>
+                <option value="AUD">AUD (A$)</option>
+              </select>
+            </div>
           </div>
         </div>
 
@@ -247,51 +283,65 @@ export default function ReportsPage() {
 
           <div className="glass-card p-6 rounded-2xl">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Accumulated Cost</p>
-            <h3 className="text-3xl font-bold text-white mt-2">₹{totalExpense.toLocaleString("en-IN")}</h3>
+            <h3 className="text-3xl font-bold text-white mt-2">
+              {selectedCurrency === "All" ? "" : getCurrencySymbol(selectedCurrency)}
+              {totalExpense.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              {selectedCurrency === "All" && " (Mixed)"}
+            </h3>
             <p className="text-[10px] text-slate-500 mt-2">Total gross spent amount</p>
           </div>
 
           <div className="glass-card p-6 rounded-2xl">
             <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Accumulated Tax</p>
-            <h3 className="text-3xl font-bold text-[#10b981] mt-2">₹{totalGst.toLocaleString("en-IN")}</h3>
+            <h3 className="text-3xl font-bold text-[#10b981] mt-2">
+              {selectedCurrency === "All" ? "" : getCurrencySymbol(selectedCurrency)}
+              {totalGst.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              {selectedCurrency === "All" && " (Mixed)"}
+            </h3>
             <p className="text-[10px] text-slate-500 mt-2">Total GST charge values</p>
           </div>
 
           <div className="glass-card p-6 rounded-2xl bg-gradient-to-br from-purple-900/10 to-indigo-900/10 border-purple-500/20">
             <p className="text-xs font-semibold text-purple-300 uppercase tracking-wider">Estimated Savings</p>
-            <h3 className="text-3xl font-bold text-purple-400 mt-2">₹{totalSavings.toLocaleString("en-IN")}</h3>
+            <h3 className="text-3xl font-bold text-purple-400 mt-2">
+              {selectedCurrency === "All" ? "" : getCurrencySymbol(selectedCurrency)}
+              {totalSavings.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              {selectedCurrency === "All" && " (Mixed)"}
+            </h3>
             <p className="text-[10px] text-purple-300 mt-2">Calculated Input Tax Credits (ITC)</p>
           </div>
         </div>
 
         {/* Tax Breakdown tables */}
-        <div className="glass-panel rounded-2xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-white/5 bg-white/[0.01]">
-            <h4 className="text-sm font-semibold text-white uppercase tracking-wider">Tax Ledger Details</h4>
+        {(!selectedCurrency || selectedCurrency === "INR" || selectedCurrency === "All") && (
+          <div className="glass-panel rounded-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-white/5 bg-white/[0.01]">
+              <h4 className="text-sm font-semibold text-white uppercase tracking-wider">Tax Ledger Details (GST India)</h4>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-slate-300">
+                <thead className="bg-black/40 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  <tr>
+                    <th className="px-6 py-4">Total CGST</th>
+                    <th className="px-6 py-4">Total SGST</th>
+                    <th className="px-6 py-4">Total IGST</th>
+                    <th className="px-6 py-4">Total GST Paid</th>
+                    <th className="px-6 py-4 text-right">Max Deduction Claim</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  <tr className="hover:bg-white/[0.01] transition-colors">
+                    <td className="px-6 py-4 font-medium text-white">{getCurrencySymbol(selectedCurrency)}{totalCgst.toFixed(2)}</td>
+                    <td className="px-6 py-4 font-medium text-white">{getCurrencySymbol(selectedCurrency)}{totalSgst.toFixed(2)}</td>
+                    <td className="px-6 py-4 font-medium text-white">{getCurrencySymbol(selectedCurrency)}{totalIgst.toFixed(2)}</td>
+                    <td className="px-6 py-4 font-semibold text-emerald-400">{getCurrencySymbol(selectedCurrency)}{totalGst.toFixed(2)}</td>
+                    <td className="px-6 py-4 text-right font-extrabold text-purple-400">{getCurrencySymbol(selectedCurrency)}{totalSavings.toFixed(2)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-300">
-              <thead className="bg-black/40 text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                <tr>
-                  <th className="px-6 py-4">Total CGST</th>
-                  <th className="px-6 py-4">Total SGST</th>
-                  <th className="px-6 py-4">Total IGST</th>
-                  <th className="px-6 py-4">Total GST Paid</th>
-                  <th className="px-6 py-4 text-right">Max Deduction Claim</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                <tr className="hover:bg-white/[0.01] transition-colors">
-                  <td className="px-6 py-4 font-medium text-white">₹{totalCgst.toFixed(2)}</td>
-                  <td className="px-6 py-4 font-medium text-white">₹{totalSgst.toFixed(2)}</td>
-                  <td className="px-6 py-4 font-medium text-white">₹{totalIgst.toFixed(2)}</td>
-                  <td className="px-6 py-4 font-semibold text-emerald-400">₹{totalGst.toFixed(2)}</td>
-                  <td className="px-6 py-4 text-right font-extrabold text-purple-400">₹{totalSavings.toFixed(2)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
+        )}
 
         {/* Detailed Bill record summary list */}
         <div className="glass-panel rounded-2xl overflow-hidden">
@@ -324,10 +374,10 @@ export default function ReportsPage() {
                           {b.category}
                         </span>
                       </td>
-                      <td className="px-6 py-3.5 font-mono">{b.gstin || "-"}</td>
-                      <td className="px-6 py-3.5 text-right">₹{b.subtotal.toFixed(2)}</td>
-                      <td className="px-6 py-3.5 text-right text-emerald-400">₹{b.gstAmount.toFixed(2)}</td>
-                      <td className="px-6 py-3.5 text-right font-bold text-white">₹{b.totalAmount.toFixed(2)}</td>
+                      <td className="px-6 py-3.5 font-mono">{b.gstin || b.taxId || "-"}</td>
+                      <td className="px-6 py-3.5 text-right">{getCurrencySymbol(b.currency)}{b.subtotal.toFixed(2)}</td>
+                      <td className="px-6 py-3.5 text-right text-emerald-400">{getCurrencySymbol(b.currency)}{b.gstAmount.toFixed(2)}</td>
+                      <td className="px-6 py-3.5 text-right font-bold text-white">{getCurrencySymbol(b.currency)}{b.totalAmount.toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>

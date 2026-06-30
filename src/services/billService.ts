@@ -40,11 +40,11 @@ function getMockBills(userId: string): Bill[] {
         vendorName: "Amazon Web Services",
         billNumber: "INV-982312",
         date: "2026-06-10",
-        gstin: "27AADCA8981A1Z2",
+        gstin: "",
         subtotal: 8000,
         gstAmount: 1440,
-        cgst: 720,
-        sgst: 720,
+        cgst: 0,
+        sgst: 0,
         igst: 0,
         totalAmount: 9440,
         category: "Software",
@@ -65,7 +65,10 @@ function getMockBills(userId: string): Bill[] {
             explanation: "EBS volume has had 0% read/write activity for the past 30 days. AWS is charging a backup surcharge for this orphan volume.",
             disputeScript: "Hello, I noticed we are paying 500 for an 'Unused Idle EBS Volume Surcharge' on invoice INV-982312. Could you please locate this volume, terminate it, and credit the surcharge amount?"
           }
-        ]
+        ],
+        currency: "USD",
+        taxType: "Sales Tax",
+        taxId: "47-0912831",
       },
       {
         id: "mock-2",
@@ -73,7 +76,7 @@ function getMockBills(userId: string): Bill[] {
         vendorName: "Starbucks Coffee",
         billNumber: "TX-4402",
         date: "2026-06-15",
-        gstin: "",
+        gstin: "27AADCA8981A1Z2",
         subtotal: 450,
         gstAmount: 22.5,
         cgst: 11.25,
@@ -98,30 +101,36 @@ function getMockBills(userId: string): Bill[] {
             explanation: "A service surcharge was added to the order for dine-in packaging. This is an optional charge that can be waived.",
             disputeScript: "Excuse me, I noticed a Dine-in Packaging Service Fee of 50 on my Starbucks receipt. Since I ordered this for dine-in, could you please remove this packaging surcharge?"
           }
-        ]
+        ],
+        currency: "INR",
+        taxType: "GST",
+        taxId: "27AADCA8981A1Z2",
       },
       {
         id: "mock-3",
         userId,
-        vendorName: "Uber Rides",
+        vendorName: "Uber London",
         billNumber: "UB-88123-X",
         date: "2026-06-20",
-        gstin: "07AAACU1234F1Z8",
-        subtotal: 1200,
-        gstAmount: 60,
-        cgst: 30,
-        sgst: 30,
+        gstin: "",
+        subtotal: 35.00,
+        gstAmount: 7.00,
+        cgst: 0,
+        sgst: 0,
         igst: 0,
-        totalAmount: 1260,
+        totalAmount: 42.00,
         category: "Travel",
         lineItems: [
-          { description: "Trip from Airport to Office", amount: 1200, qty: 1 },
+          { description: "Ride from Heathrow to London Central", amount: 35.00, qty: 1 },
         ],
         fileUrl: "https://images.unsplash.com/photo-1619252584172-a83a949b6efd?w=500&auto=format&fit=crop&q=60",
         fileName: "uber_ride_bill.png",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-        auditAlerts: []
+        auditAlerts: [],
+        currency: "GBP",
+        taxType: "VAT",
+        taxId: "GB123456789",
       },
     ];
     localStorage.setItem(MOCK_BILLS_KEY, JSON.stringify(initialMock));

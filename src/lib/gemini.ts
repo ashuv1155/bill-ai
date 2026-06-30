@@ -29,6 +29,9 @@ export interface ExtractedBillData {
   lineItems: { description: string; amount: number; qty?: number }[];
   auditAlerts?: AuditAlert[];
   resolvedAlerts?: string[];
+  currency?: string; // e.g. USD, EUR, GBP, INR
+  taxType?: 'GST' | 'VAT' | 'Sales Tax' | 'Other';
+  taxId?: string; // General business/tax number (covers GSTIN, VAT ID, EIN)
 }
 
 async function analyzeBillWithOpenRouter(
@@ -61,43 +64,49 @@ async function analyzeBillWithOpenRouter(
             {
               type: "text",
               text: `
-                 Analyze this bill/receipt/invoice and extract the following structured details. Return ONLY a valid JSON object matching this schema:
-                 {
-                   "vendorName": "Name of the merchant/vendor (string)",
-                   "billNumber": "Invoice or Bill Number (string, empty if not found)",
-                   "date": "Date of issue in YYYY-MM-DD format (string, empty if not found)",
-                   "gstin": "GSTIN number of the vendor if available (string, empty if not found)",
-                   "subtotal": 0.0 (number),
-                   "gstAmount": 0.0 (total GST/Tax amount, number),
-                   "cgst": 0.0 (CGST amount if specified, number),
-                   "sgst": 0.0 (SGST amount if specified, number),
-                   "igst": 0.0 (IGST amount if specified, number),
-                   "totalAmount": 0.0 (total final payable amount, number),
-                   "category": "One of: Fuel, Food, Travel, Office Expense, Marketing, Internet, Software, Miscellaneous",
-                   "lineItems": [
-                     {
-                       "description": "Item description (string)",
-                       "amount": 0.0 (total price for this item, number),
-                       "qty": 1 (quantity, number, optional)
-                     }
-                   ],
-                   "auditAlerts": [
-                     {
-                       "type": "junk_fee | tax_discrepancy | suspicious_item",
-                       "lineItem": "Name of the flagged charge/line item (string)",
-                       "amount": 0.0 (amount of the flagged item, number),
-                       "explanation": "Clear explanation of why it was flagged, like 'Restaurant GST should be 5%, not 18%' or 'Optional admin fee' (string)",
-                       "disputeScript": "A pre-written template script in first person for the user to copy/paste to dispute this charge (string)"
-                     }
-                   ]
-                 }
+                  Analyze this bill/receipt/invoice and extract the following structured details. Return ONLY a valid JSON object matching this schema:
+                  {
+                    "vendorName": "Name of the merchant/vendor (string)",
+                    "billNumber": "Invoice or Bill Number (string, empty if not found)",
+                    "date": "Date of issue in YYYY-MM-DD format (string, empty if not found)",
+                    "gstin": "Legacy Indian GSTIN number of the vendor if applicable (string, empty if not found)",
+                    "subtotal": 0.0 (number),
+                    "gstAmount": 0.0 (total tax/GST/VAT/Sales Tax amount, number),
+                    "cgst": 0.0 (CGST amount if specified, number),
+                    "sgst": 0.0 (SGST amount if specified, number),
+                    "igst": 0.0 (IGST amount if specified, number),
+                    "totalAmount": 0.0 (total final payable amount, number),
+                    "category": "One of: Fuel, Food, Travel, Office Expense, Marketing, Internet, Software, Miscellaneous",
+                    "lineItems": [
+                      {
+                        "description": "Item description (string)",
+                        "amount": 0.0 (total price for this item, number),
+                        "qty": 1 (quantity, number, optional)
+                      }
+                    ],
+                    "auditAlerts": [
+                      {
+                        "type": "junk_fee | tax_discrepancy | suspicious_item",
+                        "lineItem": "Name of the flagged charge/line item (string)",
+                        "amount": 0.0 (amount of the flagged item, number),
+                        "explanation": "Clear explanation of why it was flagged (string)",
+                        "disputeScript": "A pre-written template script in first person for the user to copy/paste to dispute this charge (string)"
+                      }
+                    ],
+                    "currency": "The ISO 4217 currency code of the bill, such as USD, EUR, GBP, INR, CAD, AUD, etc. (string)",
+                    "taxType": "One of: GST, VAT, Sales Tax, Other (string)",
+                    "taxId": "The merchant's general tax registration number, such as GSTIN in India, EIN/Tax ID in USA, VAT registration number in UK/EU, etc. (string, empty if not found)"
+                  }
 
-                 Audit Guidelines:
-                 - Flag line items with terms like 'convenience charge', 'admin surcharge', 'service fee', 'facility fee' as 'junk_fee'.
-                 - Flag tax anomalies (e.g. food bills charged with 18% GST instead of 5% restaurant rate, or incorrect sum calculations) as 'tax_discrepancy'.
-                 - Flag duplicate entries, mystery markups, or seat/license discrepancies as 'suspicious_item'.
-                 - If no alerts are found, return an empty array for 'auditAlerts'.
-              `.trim(),
+                  Guidelines:
+                  - Auto-detect the country of origin from the merchant address, zip code, tax labels, or receipt formatting (e.g. US receipts use USD, European receipts use EUR, UK receipts use GBP, etc.).
+                  - Identify whether the applicable tax is Sales Tax (US), VAT (EU/UK/etc.), or GST (India/Canada/Australia/etc.). Map the local tax number (EIN, GSTIN, VAT ID) to both 'taxId' (general) and 'gstin' (for backwards compatibility if it's Indian).
+                  - Audit Guidelines:
+                    - Flag line items with terms like 'convenience charge', 'admin surcharge', 'service fee', 'facility fee' as 'junk_fee'.
+                    - Flag tax anomalies (e.g. food bills charged with 18% GST instead of 5% restaurant rate, or incorrect sum calculations) as 'tax_discrepancy'.
+                    - Flag duplicate entries, mystery markups, or seat/license discrepancies as 'suspicious_item'.
+                    - If no alerts are found, return an empty array for 'auditAlerts'.
+               `.trim(),
             },
             {
               type: "image_url",
@@ -168,7 +177,10 @@ export async function analyzeBill(
           explanation: "Optional or unapproved admin fee. Standard GitHub contracts do not include this charge.",
           disputeScript: "Dear support team, I noticed an 'Optional Administrative Charge' of 500 on our invoice INV-2026-9812. As this was not contractually agreed upon, I would like to request that this fee be removed from our invoice."
         }
-      ]
+      ],
+      currency: "USD",
+      taxType: "Sales Tax",
+      taxId: "12-3456789",
     };
   }
 
@@ -191,9 +203,9 @@ export async function analyzeBill(
         "vendorName": "Name of the merchant/vendor (string)",
         "billNumber": "Invoice or Bill Number (string, empty if not found)",
         "date": "Date of issue in YYYY-MM-DD format (string, empty if not found)",
-        "gstin": "GSTIN number of the vendor if available (string, empty if not found)",
+        "gstin": "Legacy Indian GSTIN number of the vendor if applicable (string, empty if not found)",
         "subtotal": 0.0 (number),
-        "gstAmount": 0.0 (total GST/Tax amount, number),
+        "gstAmount": 0.0 (total tax/GST/VAT/Sales Tax amount, number),
         "cgst": 0.0 (CGST amount if specified, number),
         "sgst": 0.0 (SGST amount if specified, number),
         "igst": 0.0 (IGST amount if specified, number),
@@ -211,17 +223,23 @@ export async function analyzeBill(
             "type": "junk_fee | tax_discrepancy | suspicious_item",
             "lineItem": "Name of the flagged charge/line item (string)",
             "amount": 0.0 (amount of the flagged item, number),
-            "explanation": "Clear explanation of why it was flagged, like 'Restaurant GST should be 5%, not 18%' or 'Optional admin fee' (string)",
+            "explanation": "Clear explanation of why it was flagged (string)",
             "disputeScript": "A pre-written template script in first person for the user to copy/paste to dispute this charge (string)"
           }
-        ]
+        ],
+        "currency": "The ISO 4217 currency code of the bill, such as USD, EUR, GBP, INR, CAD, AUD, etc. (string)",
+        "taxType": "One of: GST, VAT, Sales Tax, Other (string)",
+        "taxId": "The merchant's general tax registration number, such as GSTIN in India, EIN/Tax ID in USA, VAT registration number in UK/EU, etc. (string, empty if not found)"
       }
 
-      Audit Guidelines:
-      - Flag line items with terms like 'convenience charge', 'admin surcharge', 'service fee', 'facility fee' as 'junk_fee'.
-      - Flag tax anomalies (e.g. food bills charged with 18% GST instead of 5% restaurant rate, or incorrect sum calculations) as 'tax_discrepancy'.
-      - Flag duplicate entries, mystery markups, or seat/license discrepancies as 'suspicious_item'.
-      - If no alerts are found, return an empty array for 'auditAlerts'.
+      Guidelines:
+      - Auto-detect the country of origin from the merchant address, zip code, tax labels, or receipt formatting (e.g. US receipts use USD, European receipts use EUR, UK receipts use GBP, etc.).
+      - Identify whether the applicable tax is Sales Tax (US), VAT (EU/UK/etc.), or GST (India/Canada/Australia/etc.). Map the local tax number (EIN, GSTIN, VAT ID) to both 'taxId' (general) and 'gstin' (for backwards compatibility if it's Indian).
+      - Audit Guidelines:
+        - Flag line items with terms like 'convenience charge', 'admin surcharge', 'service fee', 'facility fee' as 'junk_fee'.
+        - Flag tax anomalies (e.g. food bills charged with 18% GST instead of 5% restaurant rate, or incorrect sum calculations) as 'tax_discrepancy'.
+        - Flag duplicate entries, mystery markups, or seat/license discrepancies as 'suspicious_item'.
+        - If no alerts are found, return an empty array for 'auditAlerts'.
 
       Notes:
       - If GST is not explicitly broken down into CGST/SGST/IGST, set those fields to 0, but extract gstAmount if total tax is visible.

@@ -21,6 +21,35 @@ import {
   TrendingDown,
 } from "lucide-react";
 
+const EXCHANGE_RATES: Record<string, number> = {
+  USD: 1.0,
+  INR: 0.012,
+  EUR: 1.08,
+  GBP: 1.27,
+  CAD: 0.73,
+  AUD: 0.66,
+};
+
+const convertCurrency = (amount: number, from: string = "USD", to: string): number => {
+  const fromRate = EXCHANGE_RATES[from] || 1.0;
+  const toRate = EXCHANGE_RATES[to] || 1.0;
+  // Convert from currency to USD base first, then to target currency
+  const amountInUsd = amount * fromRate;
+  return amountInUsd / toRate;
+};
+
+const getCurrencySymbol = (currency?: string) => {
+  switch (currency) {
+    case "USD": return "$";
+    case "EUR": return "€";
+    case "GBP": return "£";
+    case "CAD": return "C$";
+    case "AUD": return "A$";
+    case "INR": return "₹";
+    default: return "$";
+  }
+};
+
 export default function ShieldPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -30,6 +59,7 @@ export default function ShieldPage() {
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All"); // All, Active, Resolved
   const [searchTerm, setSearchTerm] = useState("");
+  const [shieldCurrency, setShieldCurrency] = useState("USD");
 
   // Verification redirect
   useEffect(() => {
@@ -111,10 +141,10 @@ export default function ShieldPage() {
 
     alerts.forEach((alert) => {
       totalFlagsRaised++;
-      potentialSavings += alert.amount;
+      potentialSavings += convertCurrency(alert.amount, b.currency || "INR", shieldCurrency);
       if (resolved.includes(alert.lineItem)) {
         resolvedDisputesCount++;
-        recoveredSavings += alert.amount;
+        recoveredSavings += convertCurrency(alert.amount, b.currency || "INR", shieldCurrency);
       }
     });
   });
@@ -219,7 +249,7 @@ export default function ShieldPage() {
               <div>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Potential Savings</p>
                 <h3 className="text-3xl font-bold text-amber-400 mt-2">
-                  {loading ? "..." : `₹${potentialSavings.toLocaleString("en-IN")}`}
+                  {loading ? "..." : `${getCurrencySymbol(shieldCurrency)}${potentialSavings.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
                 </h3>
               </div>
               <div className="p-3 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-xl">
@@ -235,7 +265,7 @@ export default function ShieldPage() {
               <div>
                 <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Disputes Resolved</p>
                 <h3 className="text-3xl font-bold text-emerald-400 mt-2">
-                  {loading ? "..." : `₹${recoveredSavings.toLocaleString("en-IN")}`}
+                  {loading ? "..." : `${getCurrencySymbol(shieldCurrency)}${recoveredSavings.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
                 </h3>
               </div>
               <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-xl">
@@ -281,6 +311,19 @@ export default function ShieldPage() {
               <option value="All">All Statuses</option>
               <option value="Active">Active Flags</option>
               <option value="Resolved">Resolved Disputes</option>
+            </select>
+
+            <select
+              value={shieldCurrency}
+              onChange={(e) => setShieldCurrency(e.target.value)}
+              className="w-full md:w-40 bg-black/30 border border-white/5 rounded-xl text-xs p-2 focus:outline-none focus:border-purple-500 text-white"
+            >
+              <option value="USD">Base: USD ($)</option>
+              <option value="INR">Base: INR (₹)</option>
+              <option value="EUR">Base: EUR (€)</option>
+              <option value="GBP">Base: GBP (£)</option>
+              <option value="CAD">Base: CAD (C$)</option>
+              <option value="AUD">Base: AUD (A$)</option>
             </select>
           </div>
         </div>
@@ -347,7 +390,7 @@ export default function ShieldPage() {
                             </span>
                             
                             <h5 className="text-xs font-bold text-white">
-                              {alertItem.lineItem} — <span className="text-amber-400">₹{alertItem.amount}</span>
+                              {alertItem.lineItem} — <span className="text-amber-400">{getCurrencySymbol(b.currency)}{alertItem.amount}</span>
                             </h5>
                           </div>
 

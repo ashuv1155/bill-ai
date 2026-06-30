@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { fetchBills, Bill } from "@/services/billService";
 import Sidebar from "@/components/Sidebar";
+import { detectUserRegion } from "@/lib/geo";
 import {
   Receipt,
   DollarSign,
@@ -94,6 +95,9 @@ export default function Dashboard() {
     async function loadData() {
       if (user) {
         try {
+          const region = await detectUserRegion();
+          setDashboardCurrency(region.defaultCurrency);
+
           const list = await fetchBills(user.uid);
           setBills(list);
         } catch (error) {

@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { fetchBills, Bill } from "@/services/billService";
 import { exportBillsToExcel, exportBillsToPDF } from "@/services/reportService";
 import Sidebar from "@/components/Sidebar";
+import { detectUserRegion, UserRegion } from "@/lib/geo";
 import {
   FileText,
   FileDown,
@@ -41,6 +42,7 @@ export default function ReportsPage() {
   const [selectedYear, setSelectedYear] = useState<string>(new Date().getFullYear().toString());
   const [selectedMonth, setSelectedMonth] = useState<string>("All");
   const [selectedCurrency, setSelectedCurrency] = useState<string>("All");
+  const [userRegion, setUserRegion] = useState<UserRegion | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -52,6 +54,10 @@ export default function ReportsPage() {
     async function loadData() {
       if (user) {
         try {
+          const region = await detectUserRegion();
+          setUserRegion(region);
+          setSelectedCurrency(region.defaultCurrency);
+
           const list = await fetchBills(user.uid);
           setBills(list);
         } catch (error) {
@@ -313,7 +319,63 @@ export default function ReportsPage() {
         </div>
 
         {/* Tax Breakdown tables */}
-        {(!selectedCurrency || selectedCurrency === "INR" || selectedCurrency === "All") && (
+        {selectedCurrency === "USD" && (
+          <div className="glass-panel rounded-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-white/5 bg-white/[0.01]">
+              <h4 className="text-sm font-semibold text-white uppercase tracking-wider">US Sales Tax Summary Ledger</h4>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-slate-300">
+                <thead className="bg-black/40 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  <tr>
+                    <th className="px-6 py-4">Total Invoices</th>
+                    <th className="px-6 py-4">Gross Taxable Subtotal</th>
+                    <th className="px-6 py-4">State/Local Tax Paid</th>
+                    <th className="px-6 py-4 text-right">Max Deduction Claim</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  <tr className="hover:bg-white/[0.01] transition-colors">
+                    <td className="px-6 py-4 font-medium text-white">{totalBills}</td>
+                    <td className="px-6 py-4 font-medium text-white">{getCurrencySymbol(selectedCurrency)}{(totalExpense - totalGst).toFixed(2)}</td>
+                    <td className="px-6 py-4 font-semibold text-emerald-400">{getCurrencySymbol(selectedCurrency)}{totalGst.toFixed(2)}</td>
+                    <td className="px-6 py-4 text-right font-extrabold text-purple-400">{getCurrencySymbol(selectedCurrency)}{totalSavings.toFixed(2)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {(selectedCurrency === "GBP" || selectedCurrency === "EUR") && (
+          <div className="glass-panel rounded-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-white/5 bg-white/[0.01]">
+              <h4 className="text-sm font-semibold text-white uppercase tracking-wider">VAT Summary Ledger (UK/Europe)</h4>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-slate-300">
+                <thead className="bg-black/40 text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  <tr>
+                    <th className="px-6 py-4">Total Invoices</th>
+                    <th className="px-6 py-4">Net Subtotal</th>
+                    <th className="px-6 py-4">VAT Paid</th>
+                    <th className="px-6 py-4 text-right font-bold">Claimable Input Credit</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5">
+                  <tr className="hover:bg-white/[0.01] transition-colors">
+                    <td className="px-6 py-4 font-medium text-white">{totalBills}</td>
+                    <td className="px-6 py-4 font-medium text-white">{getCurrencySymbol(selectedCurrency)}{(totalExpense - totalGst).toFixed(2)}</td>
+                    <td className="px-6 py-4 font-semibold text-emerald-400">{getCurrencySymbol(selectedCurrency)}{totalGst.toFixed(2)}</td>
+                    <td className="px-6 py-4 text-right font-extrabold text-purple-400">{getCurrencySymbol(selectedCurrency)}{totalSavings.toFixed(2)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {(selectedCurrency === "INR" || selectedCurrency === "All") && (
           <div className="glass-panel rounded-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-white/5 bg-white/[0.01]">
               <h4 className="text-sm font-semibold text-white uppercase tracking-wider">Tax Ledger Details (GST India)</h4>

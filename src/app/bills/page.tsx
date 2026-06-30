@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { fetchBills, createBill, updateBill, deleteBill, checkForDuplicateBill, Bill } from "@/services/billService";
 import Sidebar from "@/components/Sidebar";
+import { detectUserRegion, UserRegion } from "@/lib/geo";
 import {
   Search,
   Filter,
@@ -73,6 +74,7 @@ export default function BillsPage() {
   // SaaS subscription modal trigger
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [userRegion, setUserRegion] = useState<UserRegion | null>(null);
 
   useEffect(() => {
     async function runAuditChecks() {
@@ -155,6 +157,9 @@ export default function BillsPage() {
     async function loadData() {
       if (user) {
         try {
+          const region = await detectUserRegion();
+          setUserRegion(region);
+
           const list = await fetchBills(user.uid);
           setBills(list);
         } catch (error) {
@@ -226,6 +231,8 @@ export default function BillsPage() {
 
       // Show edit/review modal with parsed data
       setEditingBill({
+        currency: extractedData.currency || userRegion?.defaultCurrency || "INR",
+        taxType: extractedData.taxType || userRegion?.defaultTaxType || "GST",
         ...extractedData,
         fileName: file.name,
       });
@@ -326,6 +333,8 @@ export default function BillsPage() {
       category: "Miscellaneous",
       lineItems: [],
       fileName: "manually_entered",
+      currency: userRegion?.defaultCurrency || "INR",
+      taxType: userRegion?.defaultTaxType || "GST",
     });
     setIsEditingNew(true);
     setUploadedFile(null);
